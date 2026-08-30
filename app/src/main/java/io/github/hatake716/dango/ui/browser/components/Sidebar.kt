@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
@@ -79,6 +80,8 @@ fun SidebarContent(
     /** タグ（SPEC §4.3）。M5 */
     tagColors: List<String> = emptyList(),
     onOpenTag: (String) -> Unit = {},
+    /** クラウドリンク（タップで公式アプリへ。SPEC §15 #9） */
+    onOpenCloudLink: ((CloudLink) -> Unit)? = null,
 ) {
     val colors = DangoTheme.colors
     Column(
@@ -132,6 +135,44 @@ fun SidebarContent(
                 color = colors.textSecondary,
                 fontSize = 12.sp,
             )
+        }
+        // クラウド: 公式アプリへのリンク（SPEC §15 #9。直接統合はスコープ外）
+        if (onOpenCloudLink != null) {
+            Spacer(Modifier.height(14.dp))
+            SidebarSectionLabel(stringResource(R.string.sidebar_cloud))
+            CLOUD_LINKS.forEach { link ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .swallowRightClick()
+                        .clickable { onOpenCloudLink(link) }
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = link.icon,
+                        contentDescription = null,
+                        tint = colors.accent,
+                        modifier = Modifier.size(17.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(link.labelRes),
+                        color = colors.textPrimary,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                        contentDescription = null,
+                        tint = colors.textSecondary,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
+            }
         }
         // タグ（SPEC §4.3: 色付きドット。タップでタグ検索）
         if (tagColors.isNotEmpty()) {

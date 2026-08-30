@@ -26,6 +26,12 @@
     <!-- アプリロック（SPEC §11: 設定で有効化時） -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- サイドバーのクラウドリンクから公式アプリの有無を判定するため（パッケージ可視性） -->
+    <queries>
+        <package android:name="com.google.android.apps.docs" />
+        <package android:name="com.dropbox.android" />
+    </queries>
+
     <application
         android:name=".DangoApp"
         android:label="@string/app_name"

@@ -92,6 +92,7 @@ import io.github.hatake716.dango.ui.browser.components.PathBar
 import io.github.hatake716.dango.ui.browser.components.SidebarContent
 import io.github.hatake716.dango.ui.browser.components.StatusBar
 import io.github.hatake716.dango.ui.browser.components.dragEndTracker
+import io.github.hatake716.dango.ui.browser.components.openCloudLink
 import io.github.hatake716.dango.ui.browser.components.onRightClick
 import io.github.hatake716.dango.ui.info.InfoSheet
 import io.github.hatake716.dango.ui.quicklook.QuickLookHost
@@ -213,6 +214,7 @@ fun BrowserScreen(
                             onAddConnection = viewModel::requestAddConnection,
                             tagColors = viewModel.tagColors,
                             onOpenTag = { viewModel.navigateTo(BrowserViewModel.tagPath(it)) },
+                            onOpenCloudLink = { openCloudLink(context, it) },
                         )
                         VerticalDivider(color = colors.divider, modifier = Modifier.fillMaxHeight())
                     }
@@ -292,6 +294,10 @@ fun BrowserScreen(
                         tagColors = viewModel.tagColors,
                         onOpenTag = {
                             viewModel.navigateTo(BrowserViewModel.tagPath(it))
+                            sidebarOpen = false
+                        },
+                        onOpenCloudLink = {
+                            openCloudLink(context, it)
                             sidebarOpen = false
                         },
                     )

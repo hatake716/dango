@@ -252,6 +252,10 @@
     <string name="conn_delete">Delete this connection</string>
     <string name="net_password_body">A password is required to connect to “%1$s”.</string>
 
+    <string name="sidebar_cloud">Cloud</string>
+    <string name="cloud_gdrive">Google Drive</string>
+    <string name="cloud_dropbox">Dropbox</string>
+
     <string name="cd_search">Search</string>
     <string name="search_hint">Search by name…</string>
     <string name="search_scope_folder">This folder</string>
