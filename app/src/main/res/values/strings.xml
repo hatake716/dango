@@ -244,6 +244,8 @@
     <string name="archive_default_name">アーカイブ</string>
     <string name="ctx_export_entry">フォルダに書き出す</string>
     <string name="ctx_move_to_trash">ゴミ箱に入れる</string>
+    <string name="ctx_cut">切り取り</string>
+    <string name="ctx_paste_into">このフォルダに貼り付け</string>
 
     <!-- ドラッグ&ドロップ -->
     <string name="drag_moved">移動しました</string>

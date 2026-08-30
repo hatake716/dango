@@ -42,6 +42,8 @@ class EntryMenuActions(
     val onRestore: () -> Unit,
     val onInfo: (FsEntry) -> Unit,
     val onToggleTag: (FsEntry, String) -> Unit,
+    val onPasteInto: (FsEntry?) -> Unit,
+    val onSelectAll: () -> Unit,
     val dismiss: () -> Unit,
 )
 
@@ -62,6 +64,7 @@ fun ColumnScope.EntryContextMenuContent(
     entry: FsEntry,
     isTrash: Boolean,
     isArchiveBrowse: Boolean,
+    hasClipboard: Boolean,
     entryTags: Set<String>,
     actions: EntryMenuActions,
 ) {
@@ -71,6 +74,7 @@ fun ColumnScope.EntryContextMenuContent(
         isTrash -> {
             MenuItem(R.string.act_restore, d) { actions.onRestore() }
             MenuItem(R.string.act_delete_forever, d) { actions.onDelete() }
+            MenuItem(R.string.cd_select_all, d) { actions.onSelectAll() }
             HorizontalDivider(color = colors.divider)
             MenuItem(R.string.act_info, d) { actions.onInfo(entry) }
         }
@@ -97,7 +101,17 @@ fun ColumnScope.EntryContextMenuContent(
                 MenuItem(R.string.ql_open_with, d) { actions.onOpenWith(entry) }
             }
             MenuItem(R.string.act_copy, d) { actions.onCopy() }
-            MenuItem(R.string.act_move, d) { actions.onCut() }
+            MenuItem(R.string.ctx_cut, d) { actions.onCut() }
+            if (hasClipboard) {
+                // フォルダ上ではそのフォルダの中へ貼り付ける（Windows 流の使い勝手）
+                if (entry.isDir && !entry.isRestricted) {
+                    MenuItem(R.string.ctx_paste_into, d) { actions.onPasteInto(entry) }
+                } else {
+                    MenuItem(R.string.clip_paste, d) { actions.onPasteInto(null) }
+                }
+            }
+            MenuItem(R.string.cd_select_all, d) { actions.onSelectAll() }
+            HorizontalDivider(color = colors.divider)
             MenuItem(R.string.act_duplicate, d) { actions.onDuplicate() }
             MenuItem(R.string.act_rename, d) { actions.onRename() }
             MenuItem(R.string.act_compress, d) { actions.onCompress() }
@@ -148,6 +162,7 @@ fun ColumnScope.BackgroundContextMenuContent(
     onNewFolder: () -> Unit,
     onNewTextFile: (String) -> Unit,
     onPaste: () -> Unit,
+    onSelectAll: () -> Unit,
     onReload: () -> Unit,
     dismiss: () -> Unit,
 ) {
@@ -158,6 +173,9 @@ fun ColumnScope.BackgroundContextMenuContent(
             MenuItem(R.string.clip_paste, dismiss, onPaste)
         }
         HorizontalDivider(color = DangoTheme.colors.divider)
+    }
+    if (!isArchiveBrowse) {
+        MenuItem(R.string.cd_select_all, dismiss, onSelectAll)
     }
     MenuItem(R.string.menu_reload, dismiss, onReload)
 }

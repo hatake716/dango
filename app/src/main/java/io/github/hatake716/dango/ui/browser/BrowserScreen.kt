@@ -483,6 +483,15 @@ private fun MainPane(
             onRestore = viewModel::restoreSelected,
             onInfo = viewModel::showInfo,
             onToggleTag = viewModel::toggleTag,
+            onPasteInto = { target ->
+                onEnsureNotifPermission()
+                if (target != null) {
+                    viewModel.paste(target.path)
+                } else {
+                    viewModel.paste()
+                }
+            },
+            onSelectAll = viewModel::selectAll,
             dismiss = { contextMenuKey = null },
         )
     }
@@ -505,6 +514,7 @@ private fun MainPane(
                 entry = entry,
                 isTrash = state.isTrash,
                 isArchiveBrowse = state.isArchive,
+                hasClipboard = state.clipboard != null,
                 entryTags = state.tagsByKey[entry.path.key] ?: emptySet(),
                 actions = menuActions,
             )
@@ -621,6 +631,7 @@ private fun MainPane(
                                 onEnsureNotifPermission()
                                 viewModel.paste()
                             },
+                            onSelectAll = viewModel::selectAll,
                             onReload = viewModel::reload,
                             dismiss = { backgroundMenuAt = null },
                         )

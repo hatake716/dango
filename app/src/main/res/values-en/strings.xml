@@ -222,6 +222,8 @@
     <string name="ctx_extract_options_short">Options</string>
     <string name="ctx_export_entry">Export to Folder</string>
     <string name="ctx_move_to_trash">Move to Trash</string>
+    <string name="ctx_cut">Cut</string>
+    <string name="ctx_paste_into">Paste into Folder</string>
     <string name="archive_default_name">Archive</string>
 
     <string name="drag_moved">Moved</string>

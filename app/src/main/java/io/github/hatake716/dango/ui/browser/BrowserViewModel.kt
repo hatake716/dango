@@ -1022,13 +1022,14 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(clipboard = null)
     }
 
-    fun paste() {
+    /** クリップボードを destDir へ貼り付ける（既定は現在のフォルダ。右クリック「このフォルダに貼り付け」対応） */
+    fun paste(destDir: FsPath = _state.value.currentPath) {
         val s = _state.value
         val clipboard = s.clipboard ?: return
         if (s.isTrash || s.isArchive || anyBusy) return
         // フォルダを自分自身（または子孫）へは貼り付けできない（SPEC §6.3。無限再帰防止）
         if (clipboard.entries.any { e ->
-                e.isDir && (s.currentPath == e.path || s.currentPath.isDescendantOf(e.path))
+                e.isDir && (destDir == e.path || destDir.isDescendantOf(e.path))
             }
         ) {
             _events.trySend(BrowserEvent.Message(R.string.paste_into_itself))
@@ -1037,7 +1038,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         TransferService.start(getApplication())
         transferManager.start(
             entries = clipboard.entries,
-            destDir = s.currentPath,
+            destDir = destDir,
             move = clipboard.mode == ClipboardMode.MOVE,
         ) { result ->
             viewModelScope.launch {
@@ -1045,7 +1046,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                     _state.value = _state.value.copy(clipboard = null)
                 }
                 val pasted = result.copiedNames
-                    .mapTo(mutableSetOf()) { _state.value.currentPath.child(it).key }
+                    .mapTo(mutableSetOf()) { destDir.child(it).key }
                 _state.value = _state.value.copy(pastedKeys = pasted)
                 refresh()
                 when {
