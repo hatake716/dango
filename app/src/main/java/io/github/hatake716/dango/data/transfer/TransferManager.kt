@@ -342,6 +342,7 @@ class TransferManager(
                 continue
             }
             val conflicting = existingNames.firstOrNull { it.equals(targetName, ignoreCase = true) }
+            var replaceVictim: FsPath? = null
             if (conflicting != null) {
                 if (samePlace) {
                     targetName = NameUtils.uniqueName(existingNames, targetName, src.isDir)
@@ -363,12 +364,19 @@ class TransferManager(
                         }
                         ConflictResolution.KEEP_BOTH ->
                             targetName = NameUtils.uniqueName(existingNames, targetName, src.isDir)
-                        ConflictResolution.REPLACE ->
-                            runCatching { destProvider.delete(destDir.child(conflicting), recursive = true) }
+                        ConflictResolution.REPLACE -> {
+                            // 旧データはコピー成功まで消さない（ローカル版と同じ一時名スワップ）
+                            replaceVictim = destDir.child(conflicting)
+                        }
                     }
                 }
             }
-            val target = destDir.child(targetName)
+            val finalTarget = destDir.child(targetName)
+            val target = if (replaceVictim != null) {
+                destDir.child(".dango-replace-${src.size}-${src.lastModified}-$targetName")
+            } else {
+                finalTarget
+            }
             val ok = try {
                 copyEntry(src, target)
                 true
@@ -378,7 +386,14 @@ class TransferManager(
             } catch (_: Exception) {
                 false
             }
-            if (!ok) {
+            val swapped = ok && run {
+                val victim = replaceVictim ?: return@run true
+                runCatching {
+                    destProvider.delete(victim, recursive = true)
+                    destProvider.rename(target, finalTarget)
+                }.isSuccess
+            }
+            if (!ok || !swapped) {
                 failed++
                 runCatching { destProvider.delete(target, recursive = true) }
                 continue

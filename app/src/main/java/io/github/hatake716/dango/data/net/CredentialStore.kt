@@ -29,17 +29,23 @@ class CredentialStore(context: Context) {
         }.apply()
     }
 
-    /** SSH ホスト鍵の指紋（TOFU: 初回接続時に記録し、以後一致を検証する） */
-    fun hostKey(connectionId: Long): String? = prefs.getString("hostkey_$connectionId", null)
+    /**
+     * SSH ホスト鍵の指紋（TOFU: 初回接続時に記録し、以後一致を検証する）。
+     * キーは host:port（接続 ID だと未保存接続のテストが全て id=0 を共有してしまう）
+     */
+    fun hostKey(hostPort: String): String? = prefs.getString("hostkey_$hostPort", null)
 
-    fun setHostKey(connectionId: Long, fingerprint: String) {
-        prefs.edit().putString("hostkey_$connectionId", fingerprint).apply()
+    fun setHostKey(hostPort: String, fingerprint: String) {
+        prefs.edit().putString("hostkey_$hostPort", fingerprint).apply()
+    }
+
+    fun clearHostKey(hostPort: String) {
+        prefs.edit().remove("hostkey_$hostPort").apply()
     }
 
     fun clear(connectionId: Long) {
         prefs.edit()
             .remove("pw_$connectionId")
-            .remove("hostkey_$connectionId")
             .apply()
     }
 }

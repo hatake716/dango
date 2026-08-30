@@ -135,6 +135,8 @@ data class BrowserUiState(
     val editingConnection: ConnectionEntity? = null,
     /** ネットワークパスワード入力（接続ID と表示名） */
     val netPasswordAsk: Pair<Long, String>? = null,
+    /** ファイル操作後にカラム表示の列を再読込させるためのカウンタ */
+    val refreshTick: Int = 0,
 )
 
 class BrowserViewModel(app: Application) : AndroidViewModel(app) {
@@ -291,6 +293,12 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 表示を静かに更新する（アニメーションや選択リセットを伴わない） */
     private fun refresh(thenRenameKey: String? = null) {
+        // 検索モード中はフォルダ一覧で検索結果を上書きせず、検索を再実行する
+        if (_state.value.searchActive) {
+            columnCache.clear()
+            setSearchQuery(_state.value.searchQuery)
+            return
+        }
         val path = _state.value.currentPath
         viewModelScope.launch {
             val result = runCatching { listPath(path) }
@@ -324,6 +332,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                     renamingKey = thenRenameKey,
                     loading = false,
                     errorRes = null,
+                    refreshTick = s.refreshTick + 1,
                 )
             }
         }
@@ -353,11 +362,13 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         return result
     }
 
-    /** 現在の一覧に対するタグを読み込む（ローカルのみ） */
+    /** 現在の一覧に対するタグを読み込む（ローカルのみ。SQLite の IN 上限を避けてチャンク） */
     private suspend fun loadTagsFor(entries: List<FsEntry>): Map<String, Set<String>> {
         val locals = entries.filter { it.path.scheme == "file" }
         if (locals.isEmpty()) return emptyMap()
-        val byPath = tagDao.forPaths(locals.map { it.path.displayPath() })
+        val byPath = locals.map { it.path.displayPath() }
+            .chunked(900)
+            .flatMap { tagDao.forPaths(it) }
             .groupBy({ it.path }, { it.tag })
         return locals.mapNotNull { e ->
             byPath[e.path.displayPath()]?.let { e.path.key to it.toSet() }
@@ -456,6 +467,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                         tagsByKey = loadTagsFor(visible),
                         loading = false,
                         freeSpaceBytes = free,
+                        refreshTick = s.refreshTick + 1,
                     )
                 },
                 onFailure = {
@@ -844,7 +856,15 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         val index = files.indexOfFirst { it.path.key == entry.path.key }
         if (index >= 0) {
             _state.value = s.copy(quickLookFiles = files, quickLookIndex = index)
+        } else if (!entry.isDir && !entry.isRestricted) {
+            // 現在の一覧に居ないエントリ（カラム表示の途中列など）は単体で開く
+            _state.value = s.copy(quickLookFiles = listOf(entry), quickLookIndex = 0)
         }
+    }
+
+    /** 選択のみ（開かない）。ギャラリーのフィルムストリップなど表示切替用 */
+    fun selectOnly(entry: FsEntry) {
+        _state.value = _state.value.copy(selection = setOf(entry.path.key))
     }
 
     fun setQuickLookIndex(index: Int) {
@@ -907,7 +927,9 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun commitRename(key: String, newName: String) {
         // Back でのキャンセル後にフォーカス喪失 commit が飛んでくるケースを無視する
         if (_state.value.renamingKey != key) return
-        val entry = (rawEntries + childrenCache.values.flatten()).find { it.path.key == key }
+        // 検索結果・タグ検索の行は rawEntries に居ないため state.entries も探索対象に含める
+        val entry = (rawEntries + childrenCache.values.flatten() + _state.value.entries)
+            .find { it.path.key == key }
         _state.value = _state.value.copy(renamingKey = null)
         if (entry == null || newName == entry.name) return
         if (NameUtils.validate(newName) != null) {
@@ -925,6 +947,12 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             val newPath = parent.child(newName)
             runCatching { providerFor(entry.path).rename(entry.path, newPath) }
                 .onSuccess {
+                    // タグを新しいパスへ付け替える（SPEC §6.3: タグは Room 保存のため）
+                    if (entry.path.scheme == "file") {
+                        runCatching {
+                            tagDao.rename(entry.path.displayPath(), newPath.displayPath())
+                        }
+                    }
                     refresh()
                     _state.value = _state.value.copy(selection = setOf(newPath.key))
                 }
@@ -951,7 +979,15 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                 val siblings = namesIn(parent) - entry.name
                 val unique = NameUtils.uniqueName(siblings, desired, entry.isDir)
                 val newPath = parent.child(unique)
-                runCatching { providerFor(entry.path).rename(entry.path, newPath) }.onFailure { failed++ }
+                runCatching { providerFor(entry.path).rename(entry.path, newPath) }
+                    .onSuccess {
+                        if (entry.path.scheme == "file") {
+                            runCatching {
+                                tagDao.rename(entry.path.displayPath(), newPath.displayPath())
+                            }
+                        }
+                    }
+                    .onFailure { failed++ }
             }
             exitSelectionMode()
             refresh()
@@ -1060,12 +1096,12 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- ドラッグ&ドロップ（SPEC §6.3, §4.3, §4.5） ---
 
-    /** ドラッグされたエントリ群を destDir へ移動する */
+    /** ドラッグされたエントリ群を destDir へ移動する（ローカル同士のみ。SPEC §6.3） */
     fun moveByDrag(keys: Set<String>, destDir: FsPath) {
         val s = _state.value
-        if (s.isTrash || s.isArchive || anyBusy || destDir.scheme != "file") return
+        if (s.isTrash || s.isArchive || s.isNetwork || anyBusy || destDir.scheme != "file") return
         val pool = (s.entries + s.listRows.map { it.entry }).distinctBy { it.path.key }
-        val entries = pool.filter { it.path.key in keys && !it.isRestricted }
+        val entries = pool.filter { it.path.key in keys && !it.isRestricted && it.path.scheme == "file" }
         if (entries.isEmpty()) return
         // すべて destDir 直下にある場合は何もしない
         if (entries.all { it.path.parent == destDir }) return
@@ -1334,13 +1370,15 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val id = connectionDao.upsert(connection)
             val connId = if (connection.id != 0L) connection.id else id
+            // 「保存しない」に切り替えたら過去の保存値も必ず消す（古い値が優先されて詰まるのを防ぐ）
+            if (!connection.savePassword) {
+                credentialStore.setPassword(connId, null)
+            }
             if (!password.isNullOrEmpty()) {
                 if (connection.savePassword) {
                     credentialStore.setPassword(connId, password)
-                } else {
-                    credentialStore.setPassword(connId, null)
-                    container.sessionPasswords[connId] = password
                 }
+                container.sessionPasswords[connId] = password
             }
             registry.invalidateConnection(connId)
             dismissConnectionDialog()
@@ -1434,11 +1472,12 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     // --- 検索（SPEC §6.7: インクリメンタル。M5） ---
 
     fun enterSearch() {
-        if (_state.value.isTrash || _state.value.isArchive || _state.value.isNetwork) {
+        val s = _state.value
+        if (s.isTrash || s.isArchive || s.isNetwork || s.currentPath.scheme == TAG_SCHEME) {
             _events.trySend(BrowserEvent.Message(R.string.search_local_only))
             return
         }
-        _state.value = _state.value.copy(searchActive = true, searchQuery = "")
+        _state.value = s.copy(searchActive = true, searchQuery = "")
     }
 
     fun exitSearch() {

@@ -357,7 +357,19 @@ private fun ListRow(
                             .padding(horizontal = 1.dp)
                             .size(7.dp)
                             .clip(androidx.compose.foundation.shape.CircleShape)
-                            .background(TAG_COLOR_VALUES[tag] ?: secondary),
+                            .background(TAG_COLOR_VALUES[tag] ?: secondary)
+                            // 選択行の青背景では青タグが沈むため縁取りで見せる
+                            .then(
+                                if (selected) {
+                                    Modifier.border(
+                                        1.dp,
+                                        colors.onSelection,
+                                        androidx.compose.foundation.shape.CircleShape,
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            ),
                     )
                 }
             }

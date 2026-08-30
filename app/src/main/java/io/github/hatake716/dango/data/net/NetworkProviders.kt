@@ -18,10 +18,13 @@ import io.github.hatake716.dango.data.fs.local.LocalFileSystemProvider
 import io.github.hatake716.dango.domain.model.EntryKind
 import io.github.hatake716.dango.domain.model.FsEntry
 import io.github.hatake716.dango.domain.model.FsPath
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -94,10 +97,16 @@ class NetworkProvider(
                 val backend = synchronized(sessions) { sessions[connId] } ?: run {
                     val conn = deps.connectionDao.byId(connId)
                         ?: throw IOException("接続が見つかりません")
-                    val password = deps.credentialStore.password(connId)
-                        ?: deps.sessionPasswords[connId]
+                    // 直近の入力（セッション）を保存値より優先する。
+                    // 古い保存パスワードが残ったまま正しい値を入れ直しても効かない事故を防ぐ
+                    val password = deps.sessionPasswords[connId]
+                        ?: deps.credentialStore.password(connId)
                         ?: throw NetworkAuthException()
-                    val created = createBackend(conn, password)
+                    val created = try {
+                        createBackend(conn, password)
+                    } catch (e: com.hierynomus.smbj.common.SMBRuntimeException) {
+                        throw mapSmbException(e)
+                    }
                     synchronized(sessions) { sessions[connId] = created }
                     created
                 }
@@ -109,6 +118,10 @@ class NetworkProvider(
                 } catch (e: HostKeyChangedException) {
                     invalidate(connId)
                     throw e
+                } catch (e: com.hierynomus.smbj.common.SMBRuntimeException) {
+                    // smbj は RuntimeException 系。セッション切れも認証失敗もここに来る
+                    invalidate(connId)
+                    throw mapSmbException(e)
                 } catch (e: IOException) {
                     // セッション切れの可能性があるので破棄し、次回の操作で再接続する（SPEC §7.3）
                     invalidate(connId)
@@ -118,14 +131,38 @@ class NetworkProvider(
         }
     }
 
+    private fun mapSmbException(e: com.hierynomus.smbj.common.SMBRuntimeException): IOException {
+        val status = (e as? com.hierynomus.mssmb2.SMBApiException)?.status?.name
+        return if (status in SMB_AUTH_STATUSES) {
+            NetworkAuthException(e.message)
+        } else {
+            IOException(e.message, e)
+        }
+    }
+
     fun invalidate(connId: Long) {
-        val backend = synchronized(sessions) { sessions.remove(connId) }
-        runCatching { backend?.close() }
+        val backend = synchronized(sessions) { sessions.remove(connId) } ?: return
+        // 進行中のストリーム（プレビューDL等）を道連れにしないよう、少し置いてから閉じる
+        CoroutineScope(Dispatchers.IO).launch {
+            delay(60_000)
+            runCatching { backend.close() }
+        }
     }
 
     fun invalidateAll() {
         val all = synchronized(sessions) { sessions.values.toList().also { sessions.clear() } }
         all.forEach { runCatching { it.close() } }
+    }
+
+    private companion object {
+        val SMB_AUTH_STATUSES = setOf(
+            "STATUS_LOGON_FAILURE",
+            "STATUS_ACCESS_DENIED",
+            "STATUS_ACCOUNT_RESTRICTION",
+            "STATUS_PASSWORD_EXPIRED",
+            "STATUS_ACCOUNT_DISABLED",
+            "STATUS_ACCOUNT_LOCKED_OUT",
+        )
     }
 
     private fun createBackend(conn: ConnectionEntity, password: String): NetBackend =
@@ -223,12 +260,30 @@ object NetworkTester {
 
 private class SmbBackend(conn: ConnectionEntity, password: String) : NetBackend {
     private val client = SMBClient()
-    private val connection = client.connect(conn.host, conn.port)
-    private val session = connection.authenticate(
-        AuthenticationContext(conn.username, password.toCharArray(), null),
-    )
-    private val share = session.connectShare(conn.sharePath.trim('/')) as? DiskShare
-        ?: throw IOException("共有 ${conn.sharePath} に接続できません")
+    private val connection: com.hierynomus.smbj.connection.Connection
+    private val session: com.hierynomus.smbj.session.Session
+    private val share: DiskShare
+
+    init {
+        // 途中で失敗したら確保済みの資源を閉じてから投げる（リーク防止）
+        var conn2: com.hierynomus.smbj.connection.Connection? = null
+        var sess: com.hierynomus.smbj.session.Session? = null
+        try {
+            conn2 = client.connect(conn.host, conn.port)
+            sess = conn2.authenticate(
+                AuthenticationContext(conn.username, password.toCharArray(), null),
+            )
+            share = sess.connectShare(conn.sharePath.trim('/')) as? DiskShare
+                ?: throw IOException("共有 ${conn.sharePath} に接続できません")
+            connection = conn2
+            session = sess
+        } catch (e: Throwable) {
+            runCatching { sess?.close() }
+            runCatching { conn2?.close() }
+            runCatching { client.close() }
+            throw e
+        }
+    }
 
     private fun p(segments: List<String>): String = segments.joinToString("\\")
 
@@ -242,7 +297,7 @@ private class SmbBackend(conn: ConnectionEntity, password: String) : NetBackend 
                     name = it.fileName,
                     isDir = isDir,
                     size = it.endOfFile,
-                    mtime = it.changeTime.toEpochMillis(),
+                    mtime = it.lastWriteTime.toEpochMillis(), // 内容の変更日時（Finder の「変更日」相当）
                 )
             }
 
@@ -254,7 +309,7 @@ private class SmbBackend(conn: ConnectionEntity, password: String) : NetBackend 
             name = segments.lastOrNull() ?: "",
             isDir = isDir,
             size = info.standardInformation.endOfFile,
-            mtime = info.basicInformation.changeTime.toEpochMillis(),
+            mtime = info.basicInformation.lastWriteTime.toEpochMillis(),
         )
     }
 
@@ -349,13 +404,14 @@ private class SftpBackend(
 
     init {
         var hostKeyMismatch = false
+        val hostPortKey = "${conn.host}:${conn.port}"
         ssh.addHostKeyVerifier(object : HostKeyVerifier {
             override fun verify(hostname: String?, port: Int, key: PublicKey?): Boolean {
                 val fingerprint = SecurityUtils.getFingerprint(key)
-                val saved = store.hostKey(conn.id)
+                val saved = store.hostKey(hostPortKey)
                 return when {
                     saved == null -> {
-                        store.setHostKey(conn.id, fingerprint) // 初回接続で記録（TOFU）
+                        store.setHostKey(hostPortKey, fingerprint) // 初回接続で記録（TOFU）
                         true
                     }
                     saved == fingerprint -> true
@@ -371,6 +427,7 @@ private class SftpBackend(
         })
         try {
             ssh.connectTimeout = 10_000
+            ssh.timeout = 30_000 // 無通信切断で永久ハングしないように（読み取りタイムアウト）
             ssh.connect(conn.host, conn.port)
             ssh.authPassword(conn.username, password)
         } catch (e: net.schmizz.sshj.userauth.UserAuthException) {
@@ -547,11 +604,25 @@ private class WebDavBackend(conn: ConnectionEntity, password: String) : NetBacke
 
 // --- FTP（commons-net。SPEC §7.1: 平文 FTP は警告表示） ---
 
-private class FtpBackend(conn: ConnectionEntity, password: String) : NetBackend {
-    private val client = FTPClient().apply {
+private class FtpBackend(
+    private val conn: ConnectionEntity,
+    private val password: String,
+) : NetBackend {
+
+    // 制御用クライアント（一覧・stat・mkdir 等のメタデータ操作専用）
+    private val client = newClient()
+    private val basePath = conn.sharePath.trim('/').split('/').filter { it.isNotEmpty() }
+
+    /**
+     * commons-net は retrieveFileStream/storeFileStream の完了（completePendingCommand）まで
+     * 同一クライアントに他のコマンドを発行できない。転送中の一覧取得や同一接続内コピーが
+     * 制御コネクションを壊さないよう、ストリーム転送は毎回専用クライアントを張る。
+     */
+    private fun newClient(): FTPClient = FTPClient().apply {
         controlEncoding = "UTF-8"
         connectTimeout = 10_000
         connect(conn.host, conn.port)
+        soTimeout = 30_000 // 無通信切断で永久ハングしないように
         if (!login(conn.username, password)) {
             runCatching { disconnect() }
             throw NetworkAuthException("ログインできません")
@@ -559,7 +630,6 @@ private class FtpBackend(conn: ConnectionEntity, password: String) : NetBackend 
         enterLocalPassiveMode()
         setFileType(FTP.BINARY_FILE_TYPE)
     }
-    private val basePath = conn.sharePath.trim('/').split('/').filter { it.isNotEmpty() }
 
     private fun p(segments: List<String>): String =
         "/" + (basePath + segments).joinToString("/")
@@ -597,27 +667,52 @@ private class FtpBackend(conn: ConnectionEntity, password: String) : NetBackend 
     }
 
     override fun openRead(segments: List<String>): InputStream {
-        val stream = client.retrieveFileStream(p(segments))
-            ?: throw IOException(client.replyString)
+        val dataClient = newClient()
+        val stream = dataClient.retrieveFileStream(p(segments)) ?: run {
+            val reply = dataClient.replyString
+            runCatching { dataClient.disconnect() }
+            throw IOException(reply)
+        }
         return object : InputStream() {
             override fun read(): Int = stream.read()
             override fun read(b: ByteArray, off: Int, len: Int): Int = stream.read(b, off, len)
             override fun close() {
-                stream.close()
-                client.completePendingCommand()
+                try {
+                    stream.close()
+                    // 転送の成否は completePendingCommand が確定させる（途中切断を EOF と区別）
+                    if (!dataClient.completePendingCommand()) {
+                        throw IOException(dataClient.replyString)
+                    }
+                } finally {
+                    runCatching { dataClient.logout() }
+                    runCatching { dataClient.disconnect() }
+                }
             }
         }
     }
 
     override fun openWrite(segments: List<String>): OutputStream {
-        val stream = client.storeFileStream(p(segments))
-            ?: throw IOException(client.replyString)
+        val dataClient = newClient()
+        val stream = dataClient.storeFileStream(p(segments)) ?: run {
+            val reply = dataClient.replyString
+            runCatching { dataClient.disconnect() }
+            throw IOException(reply)
+        }
         return object : OutputStream() {
             override fun write(b: Int) = stream.write(b)
             override fun write(b: ByteArray, off: Int, len: Int) = stream.write(b, off, len)
             override fun close() {
-                stream.close()
-                client.completePendingCommand()
+                try {
+                    stream.close()
+                    // 容量不足・データ接続切断（426/451/552）をここで検出しないと
+                    // 移動時に「成功扱い→ソース削除」でデータを失う
+                    if (!dataClient.completePendingCommand()) {
+                        throw IOException(dataClient.replyString)
+                    }
+                } finally {
+                    runCatching { dataClient.logout() }
+                    runCatching { dataClient.disconnect() }
+                }
             }
         }
     }

@@ -156,14 +156,15 @@ fun BrowserScreen(
         }
     }
 
-    // 戻る操作の優先順位: Quick Look → リネーム → 選択モード → サイドバー → 履歴
+    // 戻る操作の優先順位: Quick Look → リネーム → 検索 → 選択モード → サイドバー → 履歴
     BackHandler(
         enabled = state.quickLookIndex != null || state.renamingKey != null ||
-            state.selectionMode || sidebarOpen || state.canGoBack,
+            state.searchActive || state.selectionMode || sidebarOpen || state.canGoBack,
     ) {
         when {
             state.quickLookIndex != null -> viewModel.closeQuickLook()
             state.renamingKey != null -> viewModel.cancelRename()
+            state.searchActive -> viewModel.exitSearch()
             state.selectionMode -> viewModel.exitSelectionMode()
             sidebarOpen -> sidebarOpen = false
             else -> viewModel.goBack()
@@ -509,7 +510,8 @@ private fun MainPane(
             )
         },
         dragKeysFor = { entry ->
-            if (state.isTrash || state.isArchive) {
+            // ネットワーク上のD&Dは後回し（PROGRESS 参照。確認なしのリモート削除を防ぐ意味もある）
+            if (state.isTrash || state.isArchive || state.isNetwork) {
                 null
             } else if (entry.path.key in state.selection) {
                 state.selection
@@ -691,8 +693,11 @@ private fun ContentArea(
     hooks: EntryItemHooks,
 ) {
     val colors = DangoTheme.colors
-    // カラム表示は自前の横スクロールを持つため、ズームアニメーションの外で描画する（SPEC §4.4）
-    if (state.viewMode == ViewMode.COLUMN && !state.searchActive) {
+    // カラム表示は自前の横スクロールを持つため、ズームアニメーションの外で描画する（SPEC §4.4）。
+    // ゴミ箱・タグ検索は仮想パスと実体パスがずれる（実体 .Trash へ入れてしまう）ためカラム対象外
+    if (state.viewMode == ViewMode.COLUMN && !state.searchActive &&
+        !state.isTrash && state.currentPath.scheme != BrowserViewModel.TAG_SCHEME
+    ) {
         val base = remember(state.currentPath) {
             when {
                 io.github.hatake716.dango.data.net.NetPaths.isNetwork(state.currentPath) ->
@@ -714,6 +719,7 @@ private fun ContentArea(
             basePath = base,
             currentPath = state.currentPath,
             selection = state.selection,
+            refreshTick = state.refreshTick,
             loadChildren = viewModel::loadChildren,
             onNavigate = { viewModel.navigateTo(it) },
             onTapFile = viewModel::onEntryTap,
@@ -775,8 +781,9 @@ private fun ContentArea(
                     io.github.hatake716.dango.ui.browser.components.GalleryView(
                         entries = paneState.entries,
                         selection = paneState.selection,
-                        onTap = viewModel::onEntryTap,
-                        onDoubleTap = viewModel::onEntryDoubleTap,
+                        // ストリップのタップは常に「表示切替」（シングルタップで開く設定に左右されない）
+                        onSelect = viewModel::selectOnly,
+                        onOpen = viewModel::onEntryDoubleTap,
                         onLongPress = viewModel::onEntryLongPress,
                     )
                 }

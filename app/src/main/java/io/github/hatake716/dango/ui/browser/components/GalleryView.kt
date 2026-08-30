@@ -38,8 +38,8 @@ import io.github.hatake716.dango.ui.util.kindLabel
 fun GalleryView(
     entries: List<FsEntry>,
     selection: Set<String>,
-    onTap: (FsEntry) -> Unit,
-    onDoubleTap: (FsEntry) -> Unit,
+    onSelect: (FsEntry) -> Unit,
+    onOpen: (FsEntry) -> Unit,
     onLongPress: (FsEntry) -> Unit,
 ) {
     val colors = DangoTheme.colors
@@ -62,8 +62,8 @@ fun GalleryView(
                         .fillMaxSize()
                         .clip(RoundedCornerShape(8.dp))
                         .combinedClickable(
-                            onClick = { onTap(selected) },
-                            onDoubleClick = { onDoubleTap(selected) },
+                            onClick = { onSelect(selected) },
+                            onDoubleClick = { onOpen(selected) },
                         ),
                 )
                 else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -74,8 +74,8 @@ fun GalleryView(
                         modifier = Modifier
                             .size(96.dp)
                             .combinedClickable(
-                                onClick = { onTap(selected) },
-                                onDoubleClick = { onDoubleTap(selected) },
+                                onClick = { onSelect(selected) },
+                                onDoubleClick = { onOpen(selected) },
                             ),
                     )
                 }
@@ -124,8 +124,8 @@ fun GalleryView(
                             },
                         )
                         .combinedClickable(
-                            onClick = { onTap(entry) },
-                            onDoubleClick = { onDoubleTap(entry) },
+                            onClick = { onSelect(entry) },
+                            onDoubleClick = { onOpen(entry) },
                             onLongClick = { onLongPress(entry) },
                         ),
                     contentAlignment = Alignment.Center,

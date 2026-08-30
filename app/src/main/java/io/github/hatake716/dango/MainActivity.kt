@@ -38,6 +38,11 @@ import io.github.hatake716.dango.ui.browser.OnboardingScreen
 import io.github.hatake716.dango.ui.theme.DangoTheme
 import io.github.hatake716.dango.ui.theme.isDarkTheme
 
+/** ロック解除状態（プロセス生存中のみ。プロセス再生成で必ず再ロックされる） */
+private object AppLockState {
+    var unlocked: Boolean = false
+}
+
 /** 生体認証ロック画面（SPEC §10。認証は端末の BiometricPrompt に委ねる） */
 @androidx.compose.runtime.Composable
 private fun LockScreen(onUnlock: () -> Unit) {
@@ -107,11 +112,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // 起動時の生体認証ロック（SPEC §10 安全）
-            var unlocked by rememberSaveable { mutableStateOf(false) }
+            // 起動時の生体認証ロック（SPEC §10 安全）。
+            // rememberSaveable だとプロセス再生成で解除状態が復元されロックが素通しになるため、
+            // プロセス生存中のみ保持する static な状態に置く（回転では再認証を求めない）
+            var unlocked by remember { mutableStateOf(AppLockState.unlocked) }
             val needsLock = settings?.biometricLock == true && !unlocked
             LaunchedEffect(needsLock) {
-                if (needsLock) showBiometricPrompt { unlocked = true }
+                if (needsLock) {
+                    showBiometricPrompt {
+                        AppLockState.unlocked = true
+                        unlocked = true
+                    }
+                }
+            }
+            LaunchedEffect(unlocked) {
+                if (unlocked) AppLockState.unlocked = true
             }
 
             DangoTheme(
@@ -127,7 +142,14 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     needsLock -> {
-                        LockScreen(onUnlock = { showBiometricPrompt { unlocked = true } })
+                        LockScreen(
+                            onUnlock = {
+                                showBiometricPrompt {
+                                    AppLockState.unlocked = true
+                                    unlocked = true
+                                }
+                            },
+                        )
                     }
                     !hasFullAccess && !settings.onboardingDone -> {
                         OnboardingScreen(

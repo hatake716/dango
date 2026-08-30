@@ -57,6 +57,7 @@ fun ColumnView(
     basePath: FsPath,
     currentPath: FsPath,
     selection: Set<String>,
+    refreshTick: Int,
     loadChildren: suspend (FsPath) -> List<FsEntry>,
     onNavigate: (FsPath) -> Unit,
     onTapFile: (FsEntry) -> Unit,
@@ -79,8 +80,8 @@ fun ColumnView(
             listOf(currentPath)
         }
     }
-    // 選択中の単一ファイル（プレビュー列。SPEC §4.4）
-    var previewEntry by remember { mutableStateOf<FsEntry?>(null) }
+    // 選択中の単一ファイル（プレビュー列。SPEC §4.4）。フォルダ移動でクリアする
+    var previewEntry by remember(currentPath.key) { mutableStateOf<FsEntry?>(null) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val columnWidth = if (maxWidth < 600.dp) maxWidth / 2 else 240.dp
@@ -98,6 +99,7 @@ fun ColumnView(
                         width = columnWidth,
                         selectedChild = chain.getOrNull(index + 1)?.name,
                         selection = selection,
+                        refreshTick = refreshTick,
                         loadChildren = loadChildren,
                         onEntryTap = { entry ->
                             if (entry.isDir) {
@@ -130,12 +132,14 @@ private fun ColumnPane(
     width: androidx.compose.ui.unit.Dp,
     selectedChild: String?,
     selection: Set<String>,
+    refreshTick: Int,
     loadChildren: suspend (FsPath) -> List<FsEntry>,
     onEntryTap: (FsEntry) -> Unit,
     onEntryDoubleTap: (FsEntry) -> Unit,
 ) {
     val colors = DangoTheme.colors
-    val entries by produceState<List<FsEntry>?>(initialValue = null, path.key) {
+    // refreshTick でファイル操作後に列を再読込する（VM 側でキャッシュはクリア済み）
+    val entries by produceState<List<FsEntry>?>(initialValue = null, path.key, refreshTick) {
         value = loadChildren(path)
     }
     Box(modifier = Modifier.width(width).fillMaxHeight()) {
