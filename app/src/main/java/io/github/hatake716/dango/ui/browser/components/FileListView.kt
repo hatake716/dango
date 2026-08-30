@@ -45,7 +45,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -227,16 +229,27 @@ private fun ListRow(
         }
     }
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     var dropHover by remember { mutableStateOf(false) }
     val key = entry.path.key
+    // ドラッグ可否は場所（ゴミ箱・ネットワーク・アーカイブ等）で決まり、一覧内では安定
+    val canDrag = !renaming && hooks.dragKeysFor(entry) != null
+    // ドロップ先ホバー時に行を軽くバウンス（SPEC §5）
+    val dropBounce = remember { Animatable(1f) }
+    LaunchedEffect(dropHover) {
+        if (dropHover) {
+            dropBounce.animateTo(1.03f, tween(90))
+            dropBounce.animateTo(1f, tween(140))
+        }
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(32.dp)
             .background(background)
             .graphicsLayer {
-                scaleX = pulseScale.value
-                scaleY = pulseScale.value
+                scaleX = pulseScale.value * dropBounce.value
+                scaleY = pulseScale.value * dropBounce.value
             }
             .alpha(
                 when {
@@ -257,15 +270,6 @@ private fun ListRow(
                 onHover = { dropHover = it },
                 onDropKeys = { keys -> hooks.onDropInto(keys, entry) },
             )
-            .then(
-                if (selected && !renaming && hooks.dragKeysFor(entry) != null) {
-                    Modifier.entryDragSource {
-                        hooks.dragKeysFor(entry)?.also { hooks.onDragStart(it) }
-                    }
-                } else {
-                    Modifier
-                },
-            )
             .onRightClick { offset ->
                 hooks.onContextRequest(
                     entry,
@@ -275,11 +279,30 @@ private fun ListRow(
             .combinedClickable(
                 onClick = { onTap(entry) },
                 onDoubleClick = { onDoubleTap(entry) },
-                // ドラッグ可能な選択済みアイテムのみ長押しをドラッグに譲る
-                onLongClick = if (selected && hooks.dragKeysFor(entry) != null) {
+                // ドラッグ可否での使い分けは IconGridView と同じ理由
+                onLongClick = if (canDrag) {
                     null
                 } else {
-                    { onLongPress(entry) }
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongPress(entry)
+                    }
+                },
+            )
+            // ドラッグ検出は combinedClickable より内側（後）: 未消費の down だけを対象に
+            // することで、展開シェブロンや右クリックの down からは始まらない
+            .then(
+                if (canDrag) {
+                    Modifier
+                        .longPressObserver {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onLongPress(entry)
+                        }
+                        .entryDragSource {
+                            hooks.dragKeysFor(entry)?.also { hooks.onDragStart(it) }
+                        }
+                } else {
+                    Modifier
                 },
             )
             .padding(start = (12 + row.depth * 18).dp, end = 12.dp),

@@ -41,7 +41,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
@@ -131,9 +133,20 @@ private fun IconGridItem(
     modifier: Modifier = Modifier,
 ) {
     val colors = DangoTheme.colors
+    val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
     var dropHover by remember { mutableStateOf(false) }
     val key = entry.path.key
+    // ドラッグ可否は場所（ゴミ箱・ネットワーク・アーカイブ等）で決まり、一覧内では安定
+    val canDrag = !renaming && hooks.dragKeysFor(entry) != null
+    // ドロップ先ホバー時にアイコンを軽くバウンス（SPEC §5）
+    val dropBounce = remember { Animatable(1f) }
+    LaunchedEffect(dropHover) {
+        if (dropHover) {
+            dropBounce.animateTo(1.05f, tween(90))
+            dropBounce.animateTo(1f, tween(140))
+        }
+    }
     // 選択ハイライトは 80ms でフェード（SPEC §5）
     val iconBackground by animateColorAsState(
         targetValue = if (selected) colors.selectionUnfocused else Color.Transparent,
@@ -158,8 +171,8 @@ private fun IconGridItem(
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
-                scaleX = pulseScale.value
-                scaleY = pulseScale.value
+                scaleX = pulseScale.value * dropBounce.value
+                scaleY = pulseScale.value * dropBounce.value
             }
             .alpha(
                 when {
@@ -182,15 +195,6 @@ private fun IconGridItem(
                 onHover = { dropHover = it },
                 onDropKeys = { keys -> hooks.onDropInto(keys, entry) },
             )
-            .then(
-                if (selected && !renaming && hooks.dragKeysFor(entry) != null) {
-                    Modifier.entryDragSource {
-                        hooks.dragKeysFor(entry)?.also { hooks.onDragStart(it) }
-                    }
-                } else {
-                    Modifier
-                },
-            )
             .onRightClick { offset ->
                 hooks.onContextRequest(
                     entry,
@@ -200,12 +204,33 @@ private fun IconGridItem(
             .combinedClickable(
                 onClick = { onTap(entry) },
                 onDoubleClick = { onDoubleTap(entry) },
-                // ドラッグ可能な選択済みアイテムのみ長押しをドラッグに譲る
-                // （ゴミ箱等でドラッグ不可なら長押しを選択トグルのまま残す）
-                onLongClick = if (selected && hooks.dragKeysFor(entry) != null) {
+                // ドラッグ可能な文脈では onLongClick を使わない（consume されてドラッグが
+                // 始まらない）。ドラッグ不可の文脈ではドラッグ開始によるタッチキャンセルが
+                // 起きず長押し→離すで onClick が発火してしまうため、従来どおり飲み込む
+                onLongClick = if (canDrag) {
                     null
                 } else {
-                    { onLongPress(entry) }
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onLongPress(entry)
+                    }
+                },
+            )
+            // ドラッグ検出は combinedClickable より内側（後）: Main パスで先にイベントを
+            // 受けて未消費の down だけを対象にする（右クリック等の down を除外）。
+            // 長押し（選択）→そのまま指を動かすとドラッグ開始、という一続きの操作になる
+            .then(
+                if (canDrag) {
+                    Modifier
+                        .longPressObserver {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onLongPress(entry)
+                        }
+                        .entryDragSource {
+                            hooks.dragKeysFor(entry)?.also { hooks.onDragStart(it) }
+                        }
+                } else {
+                    Modifier
                 },
             )
             .padding(6.dp),

@@ -4,6 +4,61 @@
 
 ## 記録
 
+### 2026-08-31 — D&D 修正: 全アイテムを長押しドラッグ可能に
+
+- 症状: ファイル・フォルダの長押しドラッグが始まらない（選択操作になるだけ）
+- 真因は 2 段:
+  1. `combinedClickable` の `onLongClick` は発火後 `consumeUntilUp()` で全イベントを消費し、
+     同居する `dragAndDropSource` の検出器が動けない
+  2. それを除いても、新 API `dragAndDropSource(transferData)` の既定開始検出
+     `detectTapGestures` は**未消費の down** が必須で、同じアイテムの `combinedClickable` が
+     Main パス（内側優先）で先に down を consume するため一度も発火しない（foundation 1.9.3 の
+     ソースで確認。検出器の差し替え口は非公開 TODO）
+- 対処（DndSupport.kt）:
+  - `entryDragSource` をカスタム検出を書けるレガシー API `dragAndDropSource(block)` に変更し、
+    `awaitFirstDown(requireUnconsumed = false)` + `awaitLongPressOrCancellation` で開始。
+    レガシー実装はハンドラの初回ラムダを保持し続けるため `rememberUpdatedState` で最新の
+    transferKeys を参照（複数選択ドラッグの鮮度に必須）
+  - `longPressObserver`（消費しない長押し観測）を追加し、IconGridView / FileListView の
+    `onLongClick` を置換（ハプティクス付き）。ドラッグ源はリネーム中以外は常時装着
+  - `onEntryLongPress` は「未選択なら選択に追加、選択済みなら維持」に変更
+- 教訓: エミュレータにリリース署名版が残っていると `install -r` が
+  INSTALL_FAILED_UPDATE_INCOMPATIBLE で失敗し続ける（テスト前に `uninstall` する）
+- エミュレータ E2E で確認: グリッド未選択ドラッグ / グリッド複数選択ドラッグ（2件同時移動）/
+  リスト表示ドラッグ / タップ・ダブルタップの通常動作
+
+**レビュー（同日）**: 3レンズ×敵対的検証のマルチエージェントレビューで 9 件を確認し、以下を修正:
+
+- [high] ドラッグ不可の文脈（ゴミ箱・ネットワーク・アーカイブ）ではドラッグ開始のタッチ
+  キャンセルが起きず、長押し→離すで onClick が発火し選択が即解除される回帰
+  → ドラッグ可否（dragKeysFor ≠ null）で切り替え: 可なら longPressObserver + ドラッグ源、
+  不可なら従来どおり combinedClickable の onLongClick でクリックを飲み込む
+- [medium] 選択モード中に未選択アイテムを長押しドラッグすると、ペイロードがコンポジション時の
+  古い selection で確定し「表示は3件選択なのに1件しか運ばれない」
+  → dragKeysFor を viewModel.state.value（最新値）から計算し、未選択アイテムは
+  「selection + 自分」を運ぶ（onEntryLongPress とどちらが先でも同じ結果）
+- [low] リストの展開シェブロン長押しが選択モード入りを誘発 / マウス右ボタン静止長押しで
+  選択+ドラッグ+メニューが同時成立
+  → 観測系を combinedClickable より内側に移し awaitFirstDown(requireUnconsumed=true) に。
+  シェブロンや右クリック（Initial パスで消費済み）の down からは発火しなくなる
+- [low] dragKeysFor が isRestricted を見ず、制限フォルダのドラッグが無言で空振り
+  → 制限エントリはドラッグ自体を開始しない
+- [low] ギャラリーで複数選択から個別解除する手段が消滅（タップは selectOnly のため）
+  → ストリップ長押しをトグル版 onEntryLongPressToggle に配線
+- [low] longPressObserver が初回ラムダを保持し続ける → rememberUpdatedState 化
+- SPEC §5 の「ドロップ先アイコンが軽くバウンス」をグリッド/リストに実装（青枠に加えて）
+- カラム/ギャラリーの D&D・長押し選択の対象範囲は SPEC §15 #10 に確認事項として追記
+
+**副産物の既存バグ修正**: 起動直後にビュー設定（リスト表示等）が既定のアイコン表示へ
+巻き戻ることがあった。load() が古い state スナップショットを suspend（タグ読込）後に
+書き戻す lost update が原因で、設定コレクタの反映を上書きしていた。書き込みを最新値からの
+copy に変更。同値書き込みでは DataStore が再 emit しないため一度戻ると復旧しない、
+「ビュー切替ボタンが効かない」ように見える症状だった
+
+修正後のエミュレータ E2E 再確認: グリッド未選択ドラッグ / 選択+未選択まとめてドラッグ
+（2件移動）/ シェブロン長押しで選択モードに入らない / ビュー切替の双方向動作 /
+リスト表示ドラッグ。実機インストールは端末再接続待ち
+
 ### 2026-08-31 — クラウドリンク（Google Drive / Dropbox）
 
 - サイドバーに「クラウド」セクションを追加。Google ドライブ / Dropbox のリンクを設置し、

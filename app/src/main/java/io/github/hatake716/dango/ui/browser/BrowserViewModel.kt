@@ -461,14 +461,22 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                     columnCache.clear()
                     val s = _state.value
                     val visible = applyView(list, s.sort, s.showHidden)
-                    _state.value = s.copy(
-                        entries = visible,
-                        listRows = buildTreeRows(visible, s.sort, s.showHidden),
-                        tagsByKey = loadTagsFor(visible),
-                        loading = false,
-                        freeSpaceBytes = free,
-                        refreshTick = s.refreshTick + 1,
-                    )
+                    val rows = buildTreeRows(visible, s.sort, s.showHidden)
+                    val tags = loadTagsFor(visible)
+                    // loadTagsFor の suspend 中に他コルーチン（設定反映など）が state を
+                    // 更新していることがあるため、書き込みは古いスナップショット s ではなく
+                    // 最新値からの copy で行う（起動直後に viewMode が既定値へ巻き戻る等の
+                    // lost update 防止）
+                    _state.value = _state.value.let { cur ->
+                        cur.copy(
+                            entries = visible,
+                            listRows = rows,
+                            tagsByKey = tags,
+                            loading = false,
+                            freeSpaceBytes = free,
+                            refreshTick = cur.refreshTick + 1,
+                        )
+                    }
                 },
                 onFailure = {
                     rawEntries = emptyList()
@@ -513,6 +521,25 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onEntryLongPress(entry: FsEntry) {
+        val s = _state.value
+        if (s.renamingKey != null || s.isArchive) return
+        val key = entry.path.key
+        when {
+            !s.selectionMode ->
+                _state.value = s.copy(selectionMode = true, selection = setOf(key))
+            key !in s.selection ->
+                _state.value = s.copy(selection = s.selection + key)
+            // 選択済みへの長押しはドラッグ開始の前段なので選択を維持する
+            // （解除はタップで行える。長押しで外れるとドラッグ対象が抜け落ちてしまう）
+        }
+    }
+
+    /**
+     * ドラッグ源を持たないビュー（ギャラリーのストリップ等）用の長押し。
+     * タップが選択トグルに割り当てられていないビューでは、これが唯一の
+     * 個別解除手段なので従来どおりトグルする
+     */
+    fun onEntryLongPressToggle(entry: FsEntry) {
         val s = _state.value
         if (s.renamingKey != null || s.isArchive) return
         if (!s.selectionMode) {

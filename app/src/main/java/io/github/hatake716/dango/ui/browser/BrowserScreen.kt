@@ -528,13 +528,20 @@ private fun MainPane(
             )
         },
         dragKeysFor = { entry ->
-            // ネットワーク上のD&Dは後回し（PROGRESS 参照。確認なしのリモート削除を防ぐ意味もある）
-            if (state.isTrash || state.isArchive || state.isNetwork) {
-                null
-            } else if (entry.path.key in state.selection) {
-                state.selection
-            } else {
-                setOf(entry.path.key)
+            // コンポジションのスナップショットではなく最新状態で判定する。
+            // 長押し時の選択追加（onEntryLongPress）とドラッグペイロード確定は同じ
+            // 長押しタイミングで走り、リコンポジションを挟まないため、古い state を
+            // 読むと「表示は3件選択なのに1件しか運ばれない」食い違いが起きる
+            val s = viewModel.state.value
+            when {
+                // ネットワーク上のD&Dは後回し（PROGRESS 参照。確認なしのリモート削除を防ぐ意味もある）
+                s.isTrash || s.isArchive || s.isNetwork -> null
+                // 制限フォルダ（Android/data 等）は移動できないのでドラッグ自体を始めない
+                entry.isRestricted -> null
+                // 未選択アイテムの長押しドラッグは選択に加えてまとめて運ぶ
+                //（onEntryLongPress の追加とどちらが先に走っても同じペイロードになる）
+                entry.path.key in s.selection -> s.selection
+                else -> s.selection + entry.path.key
             }
         },
         onDragStart = onDragStart,
@@ -807,7 +814,8 @@ private fun ContentArea(
                         // ストリップのタップは常に「表示切替」（シングルタップで開く設定に左右されない）
                         onSelect = viewModel::selectOnly,
                         onOpen = viewModel::onEntryDoubleTap,
-                        onLongPress = viewModel::onEntryLongPress,
+                        // ギャラリーはタップが選択トグルではないため、長押しでトグルできる版を使う
+                        onLongPress = viewModel::onEntryLongPressToggle,
                     )
                 }
                 paneState.viewMode == ViewMode.LIST -> {
