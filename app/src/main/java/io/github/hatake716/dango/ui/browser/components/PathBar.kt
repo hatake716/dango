@@ -1,6 +1,7 @@
 package io.github.hatake716.dango.ui.browser.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Row
@@ -12,6 +13,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +38,8 @@ fun PathBar(
     internalRoot: FsPath,
     onNavigate: (FsPath) -> Unit,
     onPathCopied: () -> Unit,
+    /** パスバーへのドロップでその階層に移動（SPEC §4.5）。null なら受け付けない */
+    onDropKeys: ((FsPath, Set<String>) -> Unit)? = null,
 ) {
     val colors = DangoTheme.colors
     val clipboard = LocalClipboardManager.current
@@ -70,6 +77,7 @@ fun PathBar(
     ) {
         crumbs.forEachIndexed { index, (label, path) ->
             val isLast = index == crumbs.lastIndex
+            var dropHover by remember(path.key) { mutableStateOf(false) }
             Text(
                 text = label,
                 color = if (isLast) colors.textPrimary else colors.textSecondary,
@@ -78,6 +86,19 @@ fun PathBar(
                 maxLines = 1,
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
+                    .then(
+                        if (dropHover) {
+                            Modifier.border(1.dp, colors.selectionFocused, RoundedCornerShape(4.dp))
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .entryDropTarget(
+                        enabled = onDropKeys != null && path.scheme == "file",
+                        onHover = { dropHover = it },
+                        onDropKeys = { keys -> onDropKeys?.invoke(path, keys) },
+                    )
+                    .swallowRightClick()
                     .clickable(enabled = !isLast) { onNavigate(path) }
                     .padding(horizontal = 3.dp, vertical = 2.dp),
             )

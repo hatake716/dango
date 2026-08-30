@@ -52,6 +52,7 @@ fun QuickLookHost(
     files: List<FsEntry>,
     index: Int,
     textFileStore: TextFileStore,
+    loadArchiveIndex: suspend (FsEntry) -> io.github.hatake716.dango.data.archive.ArchiveIndex,
     onIndexChange: (Int) -> Unit,
     onClose: () -> Unit,
     onShare: (FsEntry) -> Unit,
@@ -123,6 +124,10 @@ fun QuickLookHost(
                         },
                         closeSignal = if (isActive) closeSignal else 0,
                         onHostClose = onClose,
+                    )
+                    EntryKind.ARCHIVE -> ArchivePage(
+                        entry = entry,
+                        loadIndex = loadArchiveIndex,
                     )
                     else -> OtherPage(entry = entry, onOpenWith = onOpenWith)
                 }

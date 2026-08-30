@@ -21,9 +21,12 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 
+/** 長時間処理の種別（コピー/移動に加え、M3 で解凍・圧縮が加わった） */
+enum class OperationKind { COPY, MOVE, EXTRACT, COMPRESS }
+
 /** 転送の進捗（ステータスバー・通知の両方がこれを購読する。SPEC §8.3） */
 data class TransferProgress(
-    val isMove: Boolean,
+    val kind: OperationKind,
     val doneBytes: Long,
     val totalBytes: Long,
     val doneFiles: Int,
@@ -132,7 +135,7 @@ class TransferManager {
                 totalBytes += f.length()
             }
         }
-        _progress.value = TransferProgress(move, 0, totalBytes, 0, totalFiles, "")
+        _progress.value = TransferProgress(if (move) OperationKind.MOVE else OperationKind.COPY, 0, totalBytes, 0, totalFiles, "")
 
         var doneBytes = 0L
         var doneFiles = 0
@@ -214,7 +217,7 @@ class TransferManager {
                     doneFiles++
                     doneBytes += f.length()
                 }
-                _progress.value = TransferProgress(move, doneBytes, totalBytes, doneFiles, totalFiles, targetName)
+                _progress.value = TransferProgress(if (move) OperationKind.MOVE else OperationKind.COPY, doneBytes, totalBytes, doneFiles, totalFiles, targetName)
                 continue
             }
 
@@ -223,7 +226,7 @@ class TransferManager {
                     doneBytes += deltaBytes
                     if (fileDone) doneFiles++
                     _progress.value =
-                        TransferProgress(move, doneBytes, totalBytes, doneFiles, totalFiles, name)
+                        TransferProgress(if (move) OperationKind.MOVE else OperationKind.COPY, doneBytes, totalBytes, doneFiles, totalFiles, name)
                 }
                 true
             } catch (e: CancellationException) {

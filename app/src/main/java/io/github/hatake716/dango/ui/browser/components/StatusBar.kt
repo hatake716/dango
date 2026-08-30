@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.R
+import io.github.hatake716.dango.data.transfer.OperationKind
 import io.github.hatake716.dango.data.transfer.TransferProgress
 import io.github.hatake716.dango.ui.theme.DangoTheme
 import io.github.hatake716.dango.ui.util.formatSize
@@ -56,7 +57,12 @@ fun StatusBar(
             ) {
                 Text(
                     text = stringResource(
-                        if (transfer.isMove) R.string.transfer_status_move else R.string.transfer_status_copy,
+                        when (transfer.kind) {
+                            OperationKind.COPY -> R.string.transfer_status_copy
+                            OperationKind.MOVE -> R.string.transfer_status_move
+                            OperationKind.EXTRACT -> R.string.transfer_status_extract
+                            OperationKind.COMPRESS -> R.string.transfer_status_compress
+                        },
                     ),
                     color = colors.textSecondary,
                     fontSize = 11.sp,

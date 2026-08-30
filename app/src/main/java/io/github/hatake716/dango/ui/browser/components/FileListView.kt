@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,13 +27,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -41,10 +45,12 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -69,6 +75,7 @@ fun FileListView(
     sort: SortSpec,
     renamingKey: String?,
     pastedKeys: Set<String>,
+    hooks: EntryItemHooks,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onLongPress: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -90,6 +97,7 @@ fun FileListView(
                     isAlt = index % 2 == 1,
                     renaming = row.entry.path.key == renamingKey,
                     pulse = row.entry.path.key in pastedKeys,
+                    hooks = hooks,
                     showExpander = showExpanders,
                     onTap = onTap,
                     onDoubleTap = onDoubleTap,
@@ -146,6 +154,7 @@ private fun HeaderCell(
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
+            .swallowRightClick()
             .clickable { onSetSortKey(key) }
             .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -178,6 +187,7 @@ private fun ListRow(
     isAlt: Boolean,
     renaming: Boolean,
     pulse: Boolean,
+    hooks: EntryItemHooks,
     showExpander: Boolean,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -213,6 +223,9 @@ private fun ListRow(
             pulseScale.animateTo(1f, tween(125))
         }
     }
+    val density = LocalDensity.current
+    var dropHover by remember { mutableStateOf(false) }
+    val key = entry.path.key
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -222,15 +235,60 @@ private fun ListRow(
                 scaleX = pulseScale.value
                 scaleY = pulseScale.value
             }
-            .alpha(if (entry.isRestricted) 0.45f else 1f)
+            .alpha(
+                when {
+                    key in hooks.draggingKeys -> 0.5f // ドラッグ元は半透明（SPEC §5）
+                    entry.isRestricted -> 0.45f
+                    else -> 1f
+                },
+            )
+            .then(
+                if (dropHover) {
+                    Modifier.border(2.dp, colors.selectionFocused, RoundedCornerShape(4.dp))
+                } else {
+                    Modifier
+                },
+            )
+            .entryDropTarget(
+                enabled = hooks.dropEnabled(entry),
+                onHover = { dropHover = it },
+                onDropKeys = { keys -> hooks.onDropInto(keys, entry) },
+            )
+            .then(
+                if (selected && !renaming && hooks.dragKeysFor(entry) != null) {
+                    Modifier.entryDragSource {
+                        hooks.dragKeysFor(entry)?.also { hooks.onDragStart(it) }
+                    }
+                } else {
+                    Modifier
+                },
+            )
+            .onRightClick { offset ->
+                hooks.onContextRequest(
+                    entry,
+                    with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) },
+                )
+            }
             .combinedClickable(
                 onClick = { onTap(entry) },
                 onDoubleClick = { onDoubleTap(entry) },
-                onLongClick = { onLongPress(entry) },
+                // ドラッグ可能な選択済みアイテムのみ長押しをドラッグに譲る
+                onLongClick = if (selected && hooks.dragKeysFor(entry) != null) {
+                    null
+                } else {
+                    { onLongPress(entry) }
+                },
             )
             .padding(start = (12 + row.depth * 18).dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        DropdownMenu(
+            expanded = hooks.contextMenuKey == key,
+            onDismissRequest = hooks.onContextDismiss,
+            offset = hooks.contextMenuOffset,
+        ) {
+            hooks.contextMenuContent(this, entry)
+        }
         if (showExpander) {
             Box(
                 modifier = Modifier.size(18.dp),

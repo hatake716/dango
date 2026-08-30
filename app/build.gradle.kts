@@ -69,6 +69,11 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.commons.compress)
+    implementation(libs.xz)
+    implementation(variantOf(libs.zstd.jni) { artifactType("aar") })
+    implementation(libs.zip4j)
+    implementation(libs.junrar)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.tooling.preview)
 }

@@ -12,6 +12,7 @@ import coil3.gif.AnimatedImageDecoder
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import coil3.video.VideoFrameDecoder
+import io.github.hatake716.dango.data.archive.ArchiveManager
 import io.github.hatake716.dango.data.db.DangoDatabase
 import io.github.hatake716.dango.data.fs.FileSystemProvider
 import io.github.hatake716.dango.data.fs.local.LocalFileSystemProvider
@@ -34,6 +35,7 @@ class AppContainer(context: Context) {
         dao = database.trashDao(),
     )
     val transferManager = TransferManager()
+    val archiveManager = ArchiveManager(context.cacheDir)
     val textFileStore = TextFileStore()
     val infoLoader = InfoLoader()
 }

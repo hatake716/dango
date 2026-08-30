@@ -6,7 +6,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.hatake716.dango.DangoApp
 import io.github.hatake716.dango.R
+import io.github.hatake716.dango.data.archive.ArchiveError
+import io.github.hatake716.dango.data.archive.ArchiveFormat
+import io.github.hatake716.dango.data.archive.ArchivePasswordException
+import io.github.hatake716.dango.data.archive.ArchivePaths
+import io.github.hatake716.dango.data.archive.ArchiveUnsupportedException
+import io.github.hatake716.dango.data.archive.CompressFormat
 import io.github.hatake716.dango.data.fs.NameUtils
+import io.github.hatake716.dango.data.fs.local.LocalFileSystemProvider
 import io.github.hatake716.dango.data.fs.local.LocalLocations
 import io.github.hatake716.dango.domain.model.ClipboardMode
 import io.github.hatake716.dango.domain.model.ClipboardState
@@ -27,12 +34,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /** コンテンツ切替アニメーションの向き（SPEC §5: 開くと戻るで逆再生） */
 enum class NavDirection { FORWARD, BACKWARD, JUMP }
@@ -93,6 +102,14 @@ data class BrowserUiState(
     val pendingDelete: PendingDelete? = null,
     /** 複数選択リネームのダイアログ表示中 */
     val pendingBatchRename: Boolean = false,
+    /** アーカイブ内ブラウズ中（読み取り専用。SPEC §6.4） */
+    val isArchive: Boolean = false,
+    /** 圧縮オプションダイアログ表示中 */
+    val showCompressDialog: Boolean = false,
+    /** 「オプションを指定して展開」の対象 */
+    val extractOptionsFor: FsEntry? = null,
+    /** パスワード入力待ちのアーカイブ表示名（null なら非表示） */
+    val archivePasswordAsk: String? = null,
 )
 
 class BrowserViewModel(app: Application) : AndroidViewModel(app) {
@@ -102,8 +119,16 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     private val settingsRepo = container.settingsRepository
     private val trashManager = container.trashManager
     private val transferManager = container.transferManager
+    private val archiveManager = container.archiveManager
     val infoLoader = container.infoLoader
     val textFileStore = container.textFileStore
+
+    /** アーカイブごとの入力済みパスワードと文字コード指定（セッション内のみ保持） */
+    private val archivePasswords = mutableMapOf<String, String>()
+    private val archiveEncodings = mutableMapOf<String, String>()
+
+    /** パスワード入力後に再実行する処理 */
+    private var pendingArchiveOp: (() -> Unit)? = null
 
     val internalRoot: FsPath = LocalLocations.internalStorage()
 
@@ -127,9 +152,12 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(BrowserUiState(currentPath = internalRoot))
     val state: StateFlow<BrowserUiState> = _state.asStateFlow()
 
-    /** 転送進捗と衝突照会は TransferManager を直接購読する（SPEC §8.3） */
-    val transferProgress = transferManager.progress
+    /** 転送・圧縮解凍の進捗と衝突照会（SPEC §8.3。ステータスバーはこれを購読する） */
+    val transferProgress = combine(transferManager.progress, archiveManager.progress) { t, a -> t ?: a }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val conflictRequest = transferManager.conflict
+
+    private val anyBusy: Boolean get() = transferManager.isBusy || archiveManager.isBusy
 
     private val _events = Channel<BrowserEvent>(Channel.BUFFERED)
     val events = _events.receiveAsFlow()
@@ -192,7 +220,14 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun goUp() {
-        val parent = _state.value.currentPath.parent ?: return
+        val current = _state.value.currentPath
+        // アーカイブのルートから上へ出るときは実ファイルの親フォルダへ戻る
+        if (ArchivePaths.isArchivePath(current) && current.segments.size == 1) {
+            val parentDir = File(ArchivePaths.archiveFile(current)).parent ?: return
+            navigateTo(LocalFileSystemProvider.fromAbsolutePath(parentDir), NavDirection.BACKWARD)
+            return
+        }
+        val parent = current.parent ?: return
         navigateTo(parent, NavDirection.BACKWARD)
     }
 
@@ -238,8 +273,36 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun listPath(path: FsPath): List<FsEntry> =
-        if (path.scheme == TRASH_SCHEME) trashManager.list() else provider.list(path).toList()
+    private suspend fun listPath(path: FsPath): List<FsEntry> = when (path.scheme) {
+        TRASH_SCHEME -> trashManager.list()
+        ArchivePaths.SCHEME -> listArchive(path)
+        else -> provider.list(path).toList()
+    }
+
+    /** アーカイブ内を仮想フォルダとして一覧する（SPEC §6.4, §8.1 data/fs/archive） */
+    private suspend fun listArchive(path: FsPath): List<FsEntry> {
+        val archiveAbs = ArchivePaths.archiveFile(path)
+        val inner = ArchivePaths.inner(path)
+        val index = archiveManager.index(
+            File(archiveAbs),
+            archivePasswords[archiveAbs],
+            archiveEncodings[archiveAbs],
+        )
+        return index.childrenOf(inner).map { meta ->
+            val ext = meta.segments.last().substringAfterLast('.', "").lowercase()
+            FsEntry(
+                path = FsPath(ArchivePaths.SCHEME, listOf(archiveAbs) + meta.segments),
+                name = meta.segments.last(),
+                isDir = meta.isDir,
+                size = if (meta.isDir) -1 else meta.size,
+                lastModified = meta.mtime,
+                isHidden = meta.segments.last().startsWith("."),
+                kind = if (meta.isDir) EntryKind.FOLDER else LocalFileSystemProvider.kindOfExtension(ext),
+                previewUri = null,
+                fileUri = null,
+            )
+        }
+    }
 
     private fun load(path: FsPath, direction: NavDirection) {
         loadJob?.cancel()
@@ -254,16 +317,28 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             renamingKey = null,
             navDirection = direction,
             isTrash = path.scheme == TRASH_SCHEME,
+            isArchive = path.scheme == ArchivePaths.SCHEME,
             canGoBack = backStack.isNotEmpty(),
             canGoForward = forwardStack.isNotEmpty(),
             quickLookIndex = null,
         )
         loadJob = viewModelScope.launch {
             val result = runCatching { listPath(path) }
-            val free = if (path.scheme == TRASH_SCHEME) {
-                provider.freeSpace(internalRoot)
-            } else {
+            // アーカイブがパスワード付きなら入力を求め、成功後に再読込する
+            (result.exceptionOrNull() as? ArchivePasswordException)?.let {
+                askArchivePassword(
+                    displayName = File(ArchivePaths.archiveFile(path)).name,
+                    targetAbs = ArchivePaths.archiveFile(path),
+                    upOnCancel = true,
+                ) {
+                    load(path, NavDirection.JUMP)
+                }
+                return@launch
+            }
+            val free = if (path.scheme == "file") {
                 provider.freeSpace(path)
+            } else {
+                provider.freeSpace(internalRoot)
             }
             result.fold(
                 onSuccess = { list ->
@@ -315,7 +390,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onEntryLongPress(entry: FsEntry) {
         val s = _state.value
-        if (s.renamingKey != null) return
+        if (s.renamingKey != null || s.isArchive) return
         if (!s.selectionMode) {
             _state.value = s.copy(selectionMode = true, selection = setOf(entry.path.key))
         } else {
@@ -335,10 +410,12 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startSelectionMode() {
+        if (_state.value.isArchive) return // アーカイブ内は読み取り専用（SPEC §6.4）
         _state.value = _state.value.copy(selectionMode = true)
     }
 
     fun selectAll() {
+        if (_state.value.isArchive) return
         _state.value = _state.value.copy(
             selectionMode = true,
             selection = allVisibleKeys(),
@@ -346,6 +423,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun invertSelection() {
+        if (_state.value.isArchive) return
         val all = allVisibleKeys()
         _state.value = _state.value.copy(
             selectionMode = true,
@@ -373,7 +451,238 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             entry.isRestricted -> _events.trySend(BrowserEvent.Message(R.string.restricted_folder))
             entry.isDir && !_state.value.isTrash -> navigateTo(entry.path, NavDirection.FORWARD)
             entry.isDir -> _events.trySend(BrowserEvent.Message(R.string.trash_folder_preview))
+            ArchivePaths.isArchivePath(entry.path) -> previewArchiveEntry(entry)
+            // アーカイブを開く＝既定は「同名フォルダに展開」（SPEC §6.4）
+            entry.kind == EntryKind.ARCHIVE && !_state.value.isTrash ->
+                extractArchive(entry, wrapInFolder = true)
             else -> openQuickLook(entry)
+        }
+    }
+
+    // --- 圧縮・解凍（SPEC §6.4） ---
+
+    fun extractArchive(
+        entry: FsEntry,
+        wrapInFolder: Boolean,
+        encodingOverride: String? = null,
+        explicitEncoding: Boolean = false,
+    ) {
+        val s = _state.value
+        if (s.isTrash || s.isArchive || anyBusy) return
+        val archive = File(entry.path.displayPath())
+        lastArchiveTarget = archive.absolutePath
+        if (explicitEncoding) {
+            // 「自動」を選び直したときは過去の明示指定を消す
+            if (encodingOverride == null) {
+                archiveEncodings.remove(archive.absolutePath)
+            } else {
+                archiveEncodings[archive.absolutePath] = encodingOverride
+            }
+        }
+        val op = {
+            TransferService.start(getApplication())
+            archiveManager.extractAll(
+                archive = archive,
+                destRoot = File(s.currentPath.displayPath()),
+                wrapInFolder = wrapInFolder,
+                password = archivePasswords[archive.absolutePath],
+                encodingOverride = archiveEncodings[archive.absolutePath],
+            ) { result ->
+                viewModelScope.launch { onArchiveOpFinished(result, archive.name) }
+            }
+        }
+        pendingArchiveOp = op
+        op()
+    }
+
+    fun browseArchive(entry: FsEntry) {
+        navigateTo(ArchivePaths.root(entry.path.displayPath()), NavDirection.FORWARD)
+    }
+
+    fun showExtractOptions(entry: FsEntry) {
+        _state.value = _state.value.copy(extractOptionsFor = entry)
+    }
+
+    fun dismissExtractOptions() {
+        _state.value = _state.value.copy(extractOptionsFor = null)
+    }
+
+    fun requestCompress() {
+        if (selectedEntries().isEmpty() || _state.value.isTrash || _state.value.isArchive) return
+        _state.value = _state.value.copy(showCompressDialog = true)
+    }
+
+    fun dismissCompress() {
+        _state.value = _state.value.copy(showCompressDialog = false)
+    }
+
+    fun compressSelected(
+        format: CompressFormat,
+        level: Int,
+        password: String?,
+        deleteSource: Boolean,
+    ) {
+        val s = _state.value
+        val sources = selectedEntries().filter { !it.isRestricted }
+        _state.value = s.copy(showCompressDialog = false)
+        if (sources.isEmpty() || anyBusy) return
+        TransferService.start(getApplication())
+        archiveManager.compress(
+            sources = sources.map { File(it.path.displayPath()) },
+            destDir = File(s.currentPath.displayPath()),
+            format = format,
+            level = level,
+            password = password?.takeIf { it.isNotEmpty() && format == CompressFormat.ZIP },
+            multiBaseName = getApplication<Application>().getString(R.string.archive_default_name),
+        ) { result ->
+            viewModelScope.launch {
+                exitSelectionMode()
+                // 「圧縮後に元を削除」は完全削除ではなくゴミ箱へ（SPEC §6.6 の削除モデルに合わせる）
+                if (deleteSource && !result.cancelled && result.error == null) {
+                    runCatching { trashManager.moveToTrash(sources) }
+                        .onSuccess { ids -> _events.trySend(BrowserEvent.TrashDone(ids.size, ids)) }
+                }
+                onArchiveOpFinished(result, sources.first().name)
+            }
+        }
+    }
+
+    private suspend fun onArchiveOpFinished(
+        result: io.github.hatake716.dango.data.archive.ArchiveOpResult,
+        archiveName: String,
+    ) {
+        refresh()
+        when {
+            result.cancelled -> _events.trySend(BrowserEvent.Message(R.string.transfer_cancelled))
+            result.error == ArchiveError.PASSWORD -> {
+                // askArchivePassword が pendingArchiveOp を上書きするため、先にキャプチャする
+                // （そのまま渡すと自己参照ラムダになり無限再帰でクラッシュする）
+                val op = pendingArchiveOp
+                askArchivePassword(archiveName, lastArchiveTarget) { op?.invoke() }
+            }
+            result.error == ArchiveError.NO_SPACE ->
+                _events.trySend(BrowserEvent.Message(R.string.extract_no_space))
+            result.error == ArchiveError.UNSUPPORTED ->
+                _events.trySend(BrowserEvent.Message(R.string.archive_unsupported))
+            result.error == ArchiveError.FAILED ->
+                _events.trySend(BrowserEvent.Message(R.string.op_failed))
+            else -> {
+                val keys = result.createdNames
+                    .mapTo(mutableSetOf()) { _state.value.currentPath.child(it).key }
+                _state.value = _state.value.copy(pastedKeys = keys)
+                _events.trySend(BrowserEvent.Message(R.string.transfer_done))
+                delay(600)
+                _state.value = _state.value.copy(pastedKeys = emptySet())
+            }
+        }
+    }
+
+    /** パスワード入力の紐付け先（ask 時点で確定させ、submit 時の画面状態に依存しない） */
+    private var pendingArchiveTargetAbs: String? = null
+    private var pendingUpOnCancel: Boolean = false
+
+    private fun askArchivePassword(
+        displayName: String,
+        targetAbs: String?,
+        upOnCancel: Boolean = false,
+        retry: () -> Unit,
+    ) {
+        pendingArchiveOp = retry
+        pendingArchiveTargetAbs = targetAbs
+        pendingUpOnCancel = upOnCancel
+        // 誤パスワードが保存されている可能性があるので破棄してから聞き直す
+        targetAbs?.let { archivePasswords.remove(it) }
+        _state.value = _state.value.copy(archivePasswordAsk = displayName)
+    }
+
+    fun submitArchivePassword(password: String) {
+        _state.value = _state.value.copy(archivePasswordAsk = null)
+        pendingArchiveTargetAbs?.let { archivePasswords[it] = password }
+        // 再度 PASSWORD エラーになったときのため pendingArchiveOp は保持したまま実行する
+        pendingArchiveOp?.invoke()
+    }
+
+    fun cancelArchivePassword() {
+        _state.value = _state.value.copy(archivePasswordAsk = null)
+        pendingArchiveOp = null
+        // アーカイブブラウズの一覧取得に対する拒否のときだけ1つ上へ戻す
+        if (pendingUpOnCancel && _state.value.isArchive) goUp()
+        pendingUpOnCancel = false
+    }
+
+    private var lastArchiveTarget: String? = null
+
+    /** アーカイブ内のファイルをキャッシュへ展開して Quick Look で開く（SPEC §6.4） */
+    private fun previewArchiveEntry(entry: FsEntry) {
+        val archiveAbs = ArchivePaths.archiveFile(entry.path)
+        lastArchiveTarget = archiveAbs
+        viewModelScope.launch {
+            val result = runCatching {
+                archiveManager.extractEntryToCache(
+                    File(archiveAbs),
+                    ArchivePaths.inner(entry.path),
+                    archivePasswords[archiveAbs],
+                    archiveEncodings[archiveAbs],
+                )
+            }
+            result.fold(
+                onSuccess = { cached ->
+                    val real = runCatching { provider.stat(LocalFileSystemProvider.fromAbsolutePath(cached.absolutePath)) }
+                        .getOrNull() ?: return@fold
+                    _state.value = _state.value.copy(
+                        quickLookFiles = listOf(real.copy(name = entry.name)),
+                        quickLookIndex = 0,
+                    )
+                },
+                onFailure = { e ->
+                    when (e) {
+                        is ArchivePasswordException ->
+                            askArchivePassword(File(archiveAbs).name, archiveAbs) {
+                                previewArchiveEntry(entry)
+                            }
+                        is ArchiveUnsupportedException ->
+                            _events.trySend(BrowserEvent.Message(R.string.archive_unsupported))
+                        else -> _events.trySend(BrowserEvent.Message(R.string.op_failed))
+                    }
+                },
+            )
+        }
+    }
+
+    /** Quick Look のアーカイブページ用にエントリ一覧を返す（SPEC §6.5: エントリ一覧ツリー） */
+    suspend fun archiveIndexFor(entry: FsEntry): io.github.hatake716.dango.data.archive.ArchiveIndex {
+        val abs = entry.path.displayPath()
+        return archiveManager.index(File(abs), archivePasswords[abs], archiveEncodings[abs])
+    }
+
+    /** アーカイブ内のファイルをアーカイブと同じフォルダへ書き出す */
+    fun exportArchiveEntry(entry: FsEntry) {
+        val archiveAbs = ArchivePaths.archiveFile(entry.path)
+        lastArchiveTarget = archiveAbs
+        val destDir = File(archiveAbs).parentFile ?: return
+        viewModelScope.launch {
+            runCatching {
+                archiveManager.extractEntryTo(
+                    File(archiveAbs),
+                    ArchivePaths.inner(entry.path),
+                    destDir,
+                    archivePasswords[archiveAbs],
+                    archiveEncodings[archiveAbs],
+                )
+            }.fold(
+                onSuccess = { name ->
+                    _events.trySend(BrowserEvent.Message(R.string.archive_exported))
+                },
+                onFailure = { e ->
+                    if (e is ArchivePasswordException) {
+                        askArchivePassword(File(archiveAbs).name, archiveAbs) {
+                            exportArchiveEntry(entry)
+                        }
+                    } else {
+                        _events.trySend(BrowserEvent.Message(R.string.op_failed))
+                    }
+                },
+            )
         }
     }
 
@@ -403,7 +712,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     // --- ファイル操作（SPEC §6.3） ---
 
     fun createFolder() {
-        if (_state.value.isTrash) return
+        if (_state.value.isTrash || _state.value.isArchive) return
         viewModelScope.launch {
             val name = NameUtils.uniqueName(
                 currentNames(),
@@ -418,7 +727,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun createTextFile(extension: String) {
-        if (_state.value.isTrash) return
+        if (_state.value.isTrash || _state.value.isArchive) return
         viewModelScope.launch {
             val base = getApplication<Application>().getString(R.string.untitled_file)
             val name = NameUtils.uniqueName(currentNames(), "$base.$extension", isDir = false)
@@ -433,7 +742,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startRename() {
         val selected = selectedEntries()
-        if (_state.value.isTrash) return
+        if (_state.value.isTrash || _state.value.isArchive) return
         when {
             selected.size == 1 -> _state.value = _state.value.copy(
                 renamingKey = selected.first().path.key,
@@ -515,7 +824,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun setClipboard(mode: ClipboardMode, @StringRes messageRes: Int) {
         val selected = selectedEntries().filter { !it.isRestricted }
-        if (selected.isEmpty() || _state.value.isTrash) return
+        if (selected.isEmpty() || _state.value.isTrash || _state.value.isArchive) return
         _state.value = _state.value.copy(
             clipboard = ClipboardState(selected, mode),
             selectionMode = false,
@@ -531,7 +840,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun paste() {
         val s = _state.value
         val clipboard = s.clipboard ?: return
-        if (s.isTrash || transferManager.isBusy) return
+        if (s.isTrash || s.isArchive || anyBusy) return
         // フォルダを自分自身（または子孫）へは貼り付けできない（SPEC §6.3。無限再帰防止）
         if (clipboard.entries.any { e ->
                 e.isDir && (s.currentPath == e.path || s.currentPath.isDescendantOf(e.path))
@@ -568,7 +877,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun duplicateSelected() {
         val selected = selectedEntries().filter { !it.isRestricted }
         val s = _state.value
-        if (selected.isEmpty() || s.isTrash || transferManager.isBusy) return
+        if (selected.isEmpty() || s.isTrash || s.isArchive || anyBusy) return
         TransferService.start(getApplication())
         transferManager.start(
             entries = selected,
@@ -593,19 +902,63 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelTransfer() {
         transferManager.cancel()
+        archiveManager.cancel()
+    }
+
+    // --- ドラッグ&ドロップ（SPEC §6.3, §4.3, §4.5） ---
+
+    /** ドラッグされたエントリ群を destDir へ移動する */
+    fun moveByDrag(keys: Set<String>, destDir: FsPath) {
+        val s = _state.value
+        if (s.isTrash || s.isArchive || anyBusy || destDir.scheme != "file") return
+        val pool = (s.entries + s.listRows.map { it.entry }).distinctBy { it.path.key }
+        val entries = pool.filter { it.path.key in keys && !it.isRestricted }
+        if (entries.isEmpty()) return
+        // すべて destDir 直下にある場合は何もしない
+        if (entries.all { it.path.parent == destDir }) return
+        if (entries.any { e -> e.isDir && (destDir == e.path || destDir.isDescendantOf(e.path)) }) {
+            _events.trySend(BrowserEvent.Message(R.string.paste_into_itself))
+            return
+        }
+        exitSelectionMode()
+        TransferService.start(getApplication())
+        transferManager.start(entries, destDir, move = true) { result ->
+            viewModelScope.launch {
+                refresh()
+                when {
+                    result.cancelled -> _events.trySend(BrowserEvent.Message(R.string.transfer_cancelled))
+                    result.failed > 0 -> _events.trySend(BrowserEvent.Message(R.string.transfer_partial))
+                    else -> _events.trySend(BrowserEvent.Message(R.string.drag_moved))
+                }
+            }
+        }
+    }
+
+    /** サイドバーのゴミ箱へのドロップ */
+    fun dropKeysToTrash(keys: Set<String>) {
+        val s = _state.value
+        if (s.isTrash || s.isArchive) return
+        val pool = (s.entries + s.listRows.map { it.entry }).distinctBy { it.path.key }
+        val entries = pool.filter { it.path.key in keys && !it.isRestricted }
+        if (entries.isEmpty()) return
+        deleteEntries(entries)
     }
 
     // --- 削除とゴミ箱（SPEC §6.3, §6.6） ---
 
     fun deleteSelected() {
         val selected = selectedEntries().filter { !it.isRestricted }
-        if (selected.isEmpty()) return
+        if (selected.isEmpty() || _state.value.isArchive) return
         if (_state.value.isTrash) {
             _state.value = _state.value.copy(pendingDelete = PendingDelete(selected))
             return
         }
+        deleteEntries(selected)
+    }
+
+    private fun deleteEntries(entries: List<FsEntry>) {
         viewModelScope.launch {
-            runCatching { trashManager.moveToTrash(selected) }
+            runCatching { trashManager.moveToTrash(entries) }
                 .onSuccess { ids ->
                     exitSelectionMode()
                     refresh()
@@ -709,8 +1062,9 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 expandedKeys += key
                 if (key !in childrenCache) {
+                    // アーカイブ内の仮想フォルダも展開できるよう listPath を使う
                     childrenCache[key] =
-                        runCatching { provider.list(entry.path).toList() }.getOrDefault(emptyList())
+                        runCatching { listPath(entry.path) }.getOrDefault(emptyList())
                 }
             }
             val s = _state.value

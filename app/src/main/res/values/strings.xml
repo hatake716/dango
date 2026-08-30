@@ -120,6 +120,10 @@
     <string name="transfer_cancelled">キャンセルしました</string>
     <string name="transfer_status_copy">コピー中…</string>
     <string name="transfer_status_move">移動中…</string>
+    <string name="transfer_status_extract">展開中…</string>
+    <string name="transfer_status_compress">圧縮中…</string>
+    <string name="transfer_extracting">展開中 (%1$d/%2$d)</string>
+    <string name="transfer_compressing">圧縮中 (%1$d/%2$d)</string>
 
     <!-- 同名衝突 -->
     <string name="conflict_title">「%1$s」は既にあります</string>
@@ -207,4 +211,40 @@
     <string name="info_compute">計算</string>
     <string name="info_items">%1$d 項目</string>
     <string name="info_calculating">計算中…</string>
+
+    <!-- 圧縮・解凍（M3。SPEC §6.4） -->
+    <string name="extract_no_space">空き容量が足りないため展開できません</string>
+    <string name="archive_unsupported">この形式のアーカイブは開けません</string>
+    <string name="archive_exported">アーカイブと同じフォルダに書き出しました</string>
+    <string name="archive_password_title">パスワード付きアーカイブ</string>
+    <string name="archive_password_body">「%1$s」はパスワードで保護されています。</string>
+    <string name="archive_entry_count">%1$d 項目</string>
+    <string name="compress_title">%1$d 項目を圧縮</string>
+    <string name="compress_level">圧縮レベル</string>
+    <string name="compress_level_fast">速い</string>
+    <string name="compress_level_normal">標準</string>
+    <string name="compress_level_max">高圧縮</string>
+    <string name="compress_password_optional">パスワード（任意・zip のみ）</string>
+    <string name="compress_delete_source">圧縮後に元を削除</string>
+    <string name="extract_encoding_label">エントリ名の文字コード</string>
+    <string name="encoding_auto">自動</string>
+    <string name="encoding_utf8">UTF-8</string>
+    <string name="encoding_sjis">Shift_JIS</string>
+    <string name="encoding_eucjp">EUC-JP</string>
+    <string name="encoding_cp437">CP437</string>
+    <string name="extract_wrap_folder">同名フォルダに展開</string>
+
+    <!-- 右クリックメニュー -->
+    <string name="ctx_open">開く</string>
+    <string name="ctx_browse_archive">内容を表示</string>
+    <string name="ctx_extract_here">ここに展開</string>
+    <string name="ctx_extract_options">オプションを指定して展開…</string>
+    <string name="ctx_extract_short">展開</string>
+    <string name="ctx_extract_options_short">展開設定</string>
+    <string name="archive_default_name">アーカイブ</string>
+    <string name="ctx_export_entry">フォルダに書き出す</string>
+    <string name="ctx_move_to_trash">ゴミ箱に入れる</string>
+
+    <!-- ドラッグ&ドロップ -->
+    <string name="drag_moved">移動しました</string>
 </resources>

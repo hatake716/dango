@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -58,7 +59,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -67,17 +70,26 @@ import io.github.hatake716.dango.data.fs.local.ShareHelper
 import io.github.hatake716.dango.data.prefs.Settings
 import io.github.hatake716.dango.domain.model.ThemeMode
 import io.github.hatake716.dango.domain.model.ViewMode
+import io.github.hatake716.dango.ui.browser.components.ArchivePasswordDialog
+import io.github.hatake716.dango.ui.browser.components.BackgroundContextMenuContent
 import io.github.hatake716.dango.ui.browser.components.BatchRenameDialog
 import io.github.hatake716.dango.ui.browser.components.BottomActionBar
 import io.github.hatake716.dango.ui.browser.components.ClipboardBar
+import io.github.hatake716.dango.ui.browser.components.CompressDialog
 import io.github.hatake716.dango.ui.browser.components.ConflictDialog
 import io.github.hatake716.dango.ui.browser.components.DangoToolbar
 import io.github.hatake716.dango.ui.browser.components.DeleteConfirmDialog
+import io.github.hatake716.dango.ui.browser.components.EntryContextMenuContent
+import io.github.hatake716.dango.ui.browser.components.EntryItemHooks
+import io.github.hatake716.dango.ui.browser.components.EntryMenuActions
+import io.github.hatake716.dango.ui.browser.components.ExtractOptionsDialog
 import io.github.hatake716.dango.ui.browser.components.FileListView
 import io.github.hatake716.dango.ui.browser.components.IconGridView
 import io.github.hatake716.dango.ui.browser.components.PathBar
 import io.github.hatake716.dango.ui.browser.components.SidebarContent
 import io.github.hatake716.dango.ui.browser.components.StatusBar
+import io.github.hatake716.dango.ui.browser.components.dragEndTracker
+import io.github.hatake716.dango.ui.browser.components.onRightClick
 import io.github.hatake716.dango.ui.info.InfoSheet
 import io.github.hatake716.dango.ui.quicklook.QuickLookHost
 import io.github.hatake716.dango.ui.theme.DangoTheme
@@ -96,6 +108,8 @@ fun BrowserScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var sidebarOpen by remember { mutableStateOf(false) }
+    // ドラッグ中のエントリ（半透明表示。ドラッグ終了で解除）
+    var draggingKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     // 転送通知の実行時許可（SPEC §11: 初回転送時）
     val notifPermissionLauncher = rememberLauncherForActivityResult(
@@ -152,11 +166,23 @@ fun BrowserScreen(
         }
     }
 
+    // サイドバーのドロップ受け（ゴミ箱は削除、それ以外は移動。SPEC §4.3）
+    val onSidebarDrop: (SidebarItem, Set<String>) -> Unit = { item, keys ->
+        draggingKeys = emptySet()
+        if (item.path == BrowserViewModel.TRASH_PATH) {
+            viewModel.dropKeysToTrash(keys)
+        } else {
+            ensureNotifPermission()
+            viewModel.moveByDrag(keys, item.path)
+        }
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.windowBackground)
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .dragEndTracker { draggingKeys = emptySet() },
     ) {
         val isWide = maxWidth >= 600.dp
         if (isWide) {
@@ -175,6 +201,7 @@ fun BrowserScreen(
                             currentPath = state.currentPath,
                             onNavigate = { viewModel.navigateTo(it) },
                             modifier = Modifier.width(220.dp),
+                            onDropKeys = onSidebarDrop,
                         )
                         VerticalDivider(color = colors.divider, modifier = Modifier.fillMaxHeight())
                     }
@@ -189,6 +216,8 @@ fun BrowserScreen(
                     onEnsureNotifPermission = ::ensureNotifPermission,
                     transfer = transfer,
                     snackbarHostState = snackbarHostState,
+                    draggingKeys = draggingKeys,
+                    onDragStart = { draggingKeys = it },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -203,6 +232,8 @@ fun BrowserScreen(
                 onEnsureNotifPermission = ::ensureNotifPermission,
                 transfer = transfer,
                 snackbarHostState = snackbarHostState,
+                draggingKeys = draggingKeys,
+                onDragStart = { draggingKeys = it },
                 modifier = Modifier.fillMaxSize(),
             )
             // 縦持ちのサイドバー: コンテンツに重なるオーバーレイ（SPEC §4.1, §5: 220ms スライド）
@@ -236,6 +267,10 @@ fun BrowserScreen(
                             sidebarOpen = false
                         },
                         modifier = Modifier.width(268.dp),
+                        onDropKeys = { item, keys ->
+                            onSidebarDrop(item, keys)
+                            sidebarOpen = false
+                        },
                     )
                     VerticalDivider(color = colors.divider, modifier = Modifier.fillMaxHeight())
                 }
@@ -264,6 +299,7 @@ fun BrowserScreen(
                     files = files,
                     index = index,
                     textFileStore = viewModel.textFileStore,
+                    loadArchiveIndex = viewModel::archiveIndexFor,
                     onIndexChange = viewModel::setQuickLookIndex,
                     onClose = viewModel::closeQuickLook,
                     onShare = viewModel::shareEntry,
@@ -303,6 +339,42 @@ fun BrowserScreen(
             onDismiss = viewModel::closeInfo,
         )
     }
+
+    if (state.showCompressDialog) {
+        CompressDialog(
+            itemCount = state.selection.size,
+            onApply = { format, level, password, deleteSource ->
+                ensureNotifPermission()
+                viewModel.compressSelected(format, level, password, deleteSource)
+            },
+            onDismiss = viewModel::dismissCompress,
+        )
+    }
+
+    state.extractOptionsFor?.let { target ->
+        ExtractOptionsDialog(
+            entryName = target.name,
+            onApply = { encoding, wrap ->
+                viewModel.dismissExtractOptions()
+                ensureNotifPermission()
+                viewModel.extractArchive(
+                    target,
+                    wrapInFolder = wrap,
+                    encodingOverride = encoding,
+                    explicitEncoding = true,
+                )
+            },
+            onDismiss = viewModel::dismissExtractOptions,
+        )
+    }
+
+    state.archivePasswordAsk?.let { name ->
+        ArchivePasswordDialog(
+            archiveName = name,
+            onSubmit = viewModel::submitArchivePassword,
+            onCancel = viewModel::cancelArchivePassword,
+        )
+    }
 }
 
 @Composable
@@ -316,10 +388,91 @@ private fun MainPane(
     onEnsureNotifPermission: () -> Unit,
     transfer: io.github.hatake716.dango.data.transfer.TransferProgress?,
     snackbarHostState: SnackbarHostState,
+    draggingKeys: Set<String>,
+    onDragStart: (Set<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = DangoTheme.colors
     val selectedEntries = viewModel.selectedEntries()
+
+    // 右クリックメニュー（マウス操作。Finder のコンテキストメニュー相当）
+    var contextMenuKey by remember { mutableStateOf<String?>(null) }
+    var contextMenuOffset by remember { mutableStateOf(DpOffset.Zero) }
+    var backgroundMenuAt by remember { mutableStateOf<DpOffset?>(null) }
+    // フォルダ移動でメニュー状態を確実に破棄する（同キーのアイテム再表示で勝手に開かないように）
+    LaunchedEffect(state.currentPath) {
+        contextMenuKey = null
+        backgroundMenuAt = null
+    }
+
+    val menuActions = remember(viewModel) {
+        EntryMenuActions(
+            onOpen = { entry ->
+                if (entry.isDir) viewModel.navigateTo(entry.path) else viewModel.onEntryDoubleTap(entry)
+            },
+            onPreview = viewModel::openQuickLook,
+            onBrowseArchive = viewModel::browseArchive,
+            onExtractHere = { entry ->
+                onEnsureNotifPermission()
+                viewModel.extractArchive(entry, wrapInFolder = false)
+            },
+            onExtractOptions = viewModel::showExtractOptions,
+            onExportEntry = viewModel::exportArchiveEntry,
+            onShare = viewModel::shareEntry,
+            onOpenWith = viewModel::openWith,
+            onCopy = viewModel::copySelected,
+            onCut = viewModel::cutSelected,
+            onDuplicate = viewModel::duplicateSelected,
+            onRename = viewModel::startRename,
+            onCompress = viewModel::requestCompress,
+            onDelete = viewModel::deleteSelected,
+            onRestore = viewModel::restoreSelected,
+            onInfo = viewModel::showInfo,
+            dismiss = { contextMenuKey = null },
+        )
+    }
+
+    val hooks = EntryItemHooks(
+        draggingKeys = draggingKeys,
+        contextMenuKey = contextMenuKey,
+        contextMenuOffset = contextMenuOffset,
+        onContextRequest = { entry, offset ->
+            // 右クリックは Finder 同様、選択に含まれていなければその項目を単独選択する
+            if (entry.path.key !in state.selection) {
+                viewModel.onEntryTap(entry)
+            }
+            contextMenuOffset = offset
+            contextMenuKey = entry.path.key
+        },
+        onContextDismiss = { contextMenuKey = null },
+        contextMenuContent = { entry ->
+            EntryContextMenuContent(
+                entry = entry,
+                isTrash = state.isTrash,
+                isArchiveBrowse = state.isArchive,
+                actions = menuActions,
+            )
+        },
+        dragKeysFor = { entry ->
+            if (state.isTrash || state.isArchive) {
+                null
+            } else if (entry.path.key in state.selection) {
+                state.selection
+            } else {
+                setOf(entry.path.key)
+            }
+        },
+        onDragStart = onDragStart,
+        dropEnabled = { entry ->
+            !state.isTrash && !state.isArchive && entry.isDir && !entry.isRestricted &&
+                entry.path.key !in draggingKeys
+        },
+        onDropInto = { keys, entry ->
+            onEnsureNotifPermission()
+            viewModel.moveByDrag(keys, entry.path)
+        },
+    )
+
     Box(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
             DangoToolbar(
@@ -364,7 +517,7 @@ private fun MainPane(
                 NormalModeBanner(onRequestFullAccess)
             }
             state.clipboard?.let { clipboard ->
-                if (!state.isTrash) {
+                if (!state.isTrash && !state.isArchive) {
                     ClipboardBar(
                         clipboard = clipboard,
                         enabled = transfer == null,
@@ -377,7 +530,37 @@ private fun MainPane(
                 }
             }
             Box(modifier = Modifier.weight(1f)) {
-                ContentArea(viewModel, state)
+                val density = LocalDensity.current
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        // 何もない場所の右クリック（アイテム側が consume するので重複しない）
+                        .onRightClick(requireUnconsumed = true) { offset ->
+                            backgroundMenuAt =
+                                with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) }
+                        },
+                ) {
+                    ContentArea(viewModel, state, hooks)
+                    DropdownMenu(
+                        expanded = backgroundMenuAt != null,
+                        onDismissRequest = { backgroundMenuAt = null },
+                        offset = backgroundMenuAt ?: DpOffset.Zero,
+                    ) {
+                        BackgroundContextMenuContent(
+                            hasClipboard = state.clipboard != null,
+                            isTrash = state.isTrash,
+                            isArchiveBrowse = state.isArchive,
+                            onNewFolder = viewModel::createFolder,
+                            onNewTextFile = viewModel::createTextFile,
+                            onPaste = {
+                                onEnsureNotifPermission()
+                                viewModel.paste()
+                            },
+                            onReload = viewModel::reload,
+                            dismiss = { backgroundMenuAt = null },
+                        )
+                    }
+                }
             }
             BottomActionBar(
                 visible = state.selectionMode,
@@ -386,12 +569,23 @@ private fun MainPane(
                 // 直接タップと同様、未対応形式もフォールバックページで開ける
                 canPreview = selectedEntries.size == 1 && !selectedEntries.first().isDir &&
                     !selectedEntries.first().isRestricted,
+                isSingleArchive = selectedEntries.size == 1 &&
+                    selectedEntries.first().kind == io.github.hatake716.dango.domain.model.EntryKind.ARCHIVE,
+                onExtract = {
+                    selectedEntries.firstOrNull()?.let {
+                        onEnsureNotifPermission()
+                        viewModel.extractArchive(it, wrapInFolder = true)
+                    }
+                },
+                onBrowseArchive = { selectedEntries.firstOrNull()?.let(viewModel::browseArchive) },
+                onExtractOptions = { selectedEntries.firstOrNull()?.let(viewModel::showExtractOptions) },
                 onPreview = { selectedEntries.firstOrNull()?.let(viewModel::openQuickLook) },
                 onShare = viewModel::shareSelected,
                 onCopy = viewModel::copySelected,
                 onMove = viewModel::cutSelected,
                 onDuplicate = viewModel::duplicateSelected,
                 onRename = viewModel::startRename,
+                onCompress = viewModel::requestCompress,
                 onDelete = viewModel::deleteSelected,
                 onInfo = viewModel::showInfoForSelection,
                 onRestore = viewModel::restoreSelected,
@@ -402,6 +596,10 @@ private fun MainPane(
                 internalRoot = viewModel.internalRoot,
                 onNavigate = { viewModel.navigateTo(it, NavDirection.BACKWARD) },
                 onPathCopied = { viewModel.notify(R.string.path_copied) },
+                onDropKeys = { path, keys ->
+                    onEnsureNotifPermission()
+                    viewModel.moveByDrag(keys, path)
+                },
             )
             HorizontalDivider(color = colors.divider)
             StatusBar(
@@ -425,6 +623,7 @@ private fun MainPane(
 private fun ContentArea(
     viewModel: BrowserViewModel,
     state: BrowserUiState,
+    hooks: EntryItemHooks,
 ) {
     val colors = DangoTheme.colors
     // フォルダを開く/戻るのズームアニメーション（SPEC §5: 200ms, EaseOutCubic。
@@ -484,6 +683,7 @@ private fun ContentArea(
                         sort = paneState.sort,
                         renamingKey = paneState.renamingKey,
                         pastedKeys = paneState.pastedKeys,
+                        hooks = hooks,
                         onTap = viewModel::onEntryTap,
                         onDoubleTap = viewModel::onEntryDoubleTap,
                         onLongPress = viewModel::onEntryLongPress,
@@ -501,6 +701,7 @@ private fun ContentArea(
                         iconSizeDp = paneState.iconSizeDp,
                         renamingKey = paneState.renamingKey,
                         pastedKeys = paneState.pastedKeys,
+                        hooks = hooks,
                         onTap = viewModel::onEntryTap,
                         onDoubleTap = viewModel::onEntryDoubleTap,
                         onLongPress = viewModel::onEntryLongPress,

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -22,12 +23,15 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -36,8 +40,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -52,6 +58,7 @@ fun IconGridView(
     iconSizeDp: Int,
     renamingKey: String?,
     pastedKeys: Set<String>,
+    hooks: EntryItemHooks,
     onTap: (FsEntry) -> Unit,
     onDoubleTap: (FsEntry) -> Unit,
     onLongPress: (FsEntry) -> Unit,
@@ -88,6 +95,7 @@ fun IconGridView(
                 iconSizeDp = iconSizeDp,
                 renaming = entry.path.key == renamingKey,
                 pulse = entry.path.key in pastedKeys,
+                hooks = hooks,
                 onTap = onTap,
                 onDoubleTap = onDoubleTap,
                 onLongPress = onLongPress,
@@ -110,6 +118,7 @@ private fun IconGridItem(
     iconSizeDp: Int,
     renaming: Boolean,
     pulse: Boolean,
+    hooks: EntryItemHooks,
     onTap: (FsEntry) -> Unit,
     onDoubleTap: (FsEntry) -> Unit,
     onLongPress: (FsEntry) -> Unit,
@@ -118,6 +127,9 @@ private fun IconGridItem(
     modifier: Modifier = Modifier,
 ) {
     val colors = DangoTheme.colors
+    val density = LocalDensity.current
+    var dropHover by remember { mutableStateOf(false) }
+    val key = entry.path.key
     // 選択ハイライトは 80ms でフェード（SPEC §5）
     val iconBackground by animateColorAsState(
         targetValue = if (selected) colors.selectionUnfocused else Color.Transparent,
@@ -145,16 +157,63 @@ private fun IconGridItem(
                 scaleX = pulseScale.value
                 scaleY = pulseScale.value
             }
-            .alpha(if (entry.isRestricted) 0.45f else 1f)
+            .alpha(
+                when {
+                    key in hooks.draggingKeys -> 0.5f // ドラッグ元は半透明（SPEC §5）
+                    entry.isRestricted -> 0.45f
+                    else -> 1f
+                },
+            )
             .clip(RoundedCornerShape(8.dp))
+            // ドロップ先フォルダは青枠でハイライト（SPEC §5）
+            .then(
+                if (dropHover) {
+                    Modifier.border(2.dp, colors.selectionFocused, RoundedCornerShape(8.dp))
+                } else {
+                    Modifier
+                },
+            )
+            .entryDropTarget(
+                enabled = hooks.dropEnabled(entry),
+                onHover = { dropHover = it },
+                onDropKeys = { keys -> hooks.onDropInto(keys, entry) },
+            )
+            .then(
+                if (selected && !renaming && hooks.dragKeysFor(entry) != null) {
+                    Modifier.entryDragSource {
+                        hooks.dragKeysFor(entry)?.also { hooks.onDragStart(it) }
+                    }
+                } else {
+                    Modifier
+                },
+            )
+            .onRightClick { offset ->
+                hooks.onContextRequest(
+                    entry,
+                    with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) },
+                )
+            }
             .combinedClickable(
                 onClick = { onTap(entry) },
                 onDoubleClick = { onDoubleTap(entry) },
-                onLongClick = { onLongPress(entry) },
+                // ドラッグ可能な選択済みアイテムのみ長押しをドラッグに譲る
+                // （ゴミ箱等でドラッグ不可なら長押しを選択トグルのまま残す）
+                onLongClick = if (selected && hooks.dragKeysFor(entry) != null) {
+                    null
+                } else {
+                    { onLongPress(entry) }
+                },
             )
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        DropdownMenu(
+            expanded = hooks.contextMenuKey == key,
+            onDismissRequest = hooks.onContextDismiss,
+            offset = hooks.contextMenuOffset,
+        ) {
+            hooks.contextMenuContent(this, entry)
+        }
         Box(
             modifier = Modifier
                 .size(iconBox)

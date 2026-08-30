@@ -12,6 +12,8 @@ import android.os.Build
 import android.os.IBinder
 import io.github.hatake716.dango.DangoApp
 import io.github.hatake716.dango.R
+import io.github.hatake716.dango.data.transfer.OperationKind
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -32,9 +34,10 @@ class TransferService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val manager = (application as DangoApp).container.transferManager
+        val container = (application as DangoApp).container
         if (intent?.action == ACTION_CANCEL) {
-            manager.cancel()
+            container.transferManager.cancel()
+            container.archiveManager.cancel()
             return START_NOT_STICKY
         }
         createChannel()
@@ -42,20 +45,31 @@ class TransferService : Service() {
 
         collectJob?.cancel()
         collectJob = scope.launch {
-            // サービス起動と TransferManager.start の順序は保証されないため、
-            // 最初に進捗を観測するまでは null（未開始）で停止しない
+            // サービス起動と Manager.start の順序は保証されないため、
+            // 最初に進捗を観測するまでは null（未開始）で停止しない。
+            // ただし操作が進捗を出す前に即失敗すると null のままになるため、
+            // 一定時間観測できなければ自ら止まる
             var seenProgress = false
-            manager.progress.collect { p ->
+            launch {
+                delay(8_000)
+                if (!seenProgress) stopSelf()
+            }
+            combine(
+                container.transferManager.progress,
+                container.archiveManager.progress,
+            ) { transfer, archive -> transfer ?: archive }.collect { p ->
                 if (p == null) {
                     if (seenProgress) stopSelf()
                     return@collect
                 }
                 seenProgress = true
-                val label = getString(
-                    if (p.isMove) R.string.transfer_moving else R.string.transfer_copying,
-                    p.doneFiles,
-                    p.totalFiles,
-                )
+                val labelRes = when (p.kind) {
+                    OperationKind.COPY -> R.string.transfer_copying
+                    OperationKind.MOVE -> R.string.transfer_moving
+                    OperationKind.EXTRACT -> R.string.transfer_extracting
+                    OperationKind.COMPRESS -> R.string.transfer_compressing
+                }
+                val label = getString(labelRes, p.doneFiles, p.totalFiles)
                 notify(buildNotification(label, (p.fraction * 100).toInt(), 100))
                 delay(400) // 通知の更新はスロットリング
             }

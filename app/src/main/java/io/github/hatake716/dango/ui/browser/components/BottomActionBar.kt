@@ -22,7 +22,10 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.FolderZip
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LibraryAdd
 import androidx.compose.material.icons.outlined.RestoreFromTrash
@@ -50,12 +53,18 @@ fun BottomActionBar(
     isTrash: Boolean,
     selectionCount: Int,
     canPreview: Boolean,
+    /** 単一のアーカイブを選択中（タッチでも展開・内容表示に到達できるように。SPEC §6.4） */
+    isSingleArchive: Boolean,
+    onExtract: () -> Unit,
+    onBrowseArchive: () -> Unit,
+    onExtractOptions: () -> Unit,
     onPreview: () -> Unit,
     onShare: () -> Unit,
     onCopy: () -> Unit,
     onMove: () -> Unit,
     onDuplicate: () -> Unit,
     onRename: () -> Unit,
+    onCompress: () -> Unit,
     onDelete: () -> Unit,
     onInfo: () -> Unit,
     onRestore: () -> Unit,
@@ -81,14 +90,18 @@ fun BottomActionBar(
                     ActionButton(Icons.Outlined.DeleteForever, R.string.act_delete_forever, enabled = selectionCount > 0, onClick = onDelete)
                     ActionButton(Icons.Outlined.Info, R.string.act_info, enabled = selectionCount == 1, onClick = onInfo)
                 } else {
+                    if (isSingleArchive) {
+                        ActionButton(Icons.Outlined.Unarchive, R.string.ctx_extract_short, enabled = true, onClick = onExtract)
+                        ActionButton(Icons.Outlined.FolderOpen, R.string.ctx_browse_archive, enabled = true, onClick = onBrowseArchive)
+                        ActionButton(Icons.Outlined.Tune, R.string.ctx_extract_options_short, enabled = true, onClick = onExtractOptions)
+                    }
                     ActionButton(Icons.Outlined.Visibility, R.string.act_preview, enabled = canPreview, onClick = onPreview)
                     ActionButton(Icons.Outlined.Share, R.string.act_share, enabled = selectionCount > 0, onClick = onShare)
                     ActionButton(Icons.Outlined.ContentCopy, R.string.act_copy, enabled = selectionCount > 0, onClick = onCopy)
                     ActionButton(Icons.Outlined.DriveFileMove, R.string.act_move, enabled = selectionCount > 0, onClick = onMove)
                     ActionButton(Icons.Outlined.LibraryAdd, R.string.act_duplicate, enabled = selectionCount > 0, onClick = onDuplicate)
                     ActionButton(Icons.Outlined.DriveFileRenameOutline, R.string.act_rename, enabled = selectionCount > 0, onClick = onRename)
-                    // 圧縮は M3 で対応（SPEC §14）
-                    ActionButton(Icons.Outlined.FolderZip, R.string.act_compress, enabled = false, onClick = {})
+                    ActionButton(Icons.Outlined.FolderZip, R.string.act_compress, enabled = selectionCount > 0, onClick = onCompress)
                     ActionButton(Icons.Outlined.Delete, R.string.act_delete, enabled = selectionCount > 0, onClick = onDelete)
                     ActionButton(Icons.Outlined.Info, R.string.act_info, enabled = selectionCount == 1, onClick = onInfo)
                 }

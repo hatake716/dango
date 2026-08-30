@@ -1,6 +1,7 @@
 package io.github.hatake716.dango.ui.browser.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,10 @@ import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +63,8 @@ fun SidebarContent(
     currentPath: FsPath,
     onNavigate: (FsPath) -> Unit,
     modifier: Modifier = Modifier,
+    /** ドラッグ&ドロップの受け口（SPEC §4.3）。null なら受け付けない */
+    onDropKeys: ((SidebarItem, Set<String>) -> Unit)? = null,
 ) {
     val colors = DangoTheme.colors
     Column(
@@ -70,12 +77,12 @@ fun SidebarContent(
     ) {
         SidebarSectionLabel(stringResource(R.string.sidebar_favorites))
         favorites.forEach { item ->
-            SidebarRow(item, selected = currentPath == item.path, onNavigate = onNavigate)
+            SidebarRow(item, selected = currentPath == item.path, onNavigate = onNavigate, onDropKeys = onDropKeys)
         }
         Spacer(Modifier.height(14.dp))
         SidebarSectionLabel(stringResource(R.string.sidebar_locations))
         locations.forEach { item ->
-            SidebarRow(item, selected = currentPath == item.path, onNavigate = onNavigate)
+            SidebarRow(item, selected = currentPath == item.path, onNavigate = onNavigate, onDropKeys = onDropKeys)
         }
     }
 }
@@ -96,14 +103,29 @@ private fun SidebarRow(
     item: SidebarItem,
     selected: Boolean,
     onNavigate: (FsPath) -> Unit,
+    onDropKeys: ((SidebarItem, Set<String>) -> Unit)?,
 ) {
     val colors = DangoTheme.colors
+    var dropHover by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(34.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(if (selected) colors.selectionUnfocused else colors.sidebar)
+            .then(
+                if (dropHover) {
+                    Modifier.border(2.dp, colors.selectionFocused, RoundedCornerShape(6.dp))
+                } else {
+                    Modifier
+                },
+            )
+            .entryDropTarget(
+                enabled = onDropKeys != null,
+                onHover = { dropHover = it },
+                onDropKeys = { keys -> onDropKeys?.invoke(item, keys) },
+            )
+            .swallowRightClick()
             .clickable { onNavigate(item.path) }
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
