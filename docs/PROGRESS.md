@@ -4,6 +4,16 @@
 
 ## 記録
 
+### 2026-08-31 — v1.0.0 リリース
+
+- GitHub Release [v1.0.0](https://github.com/hatake716/dango/releases/tag/v1.0.0) を作成し、
+  署名済み APK（dango-v1.0.0.apk）を添付
+- リリース署名: リポジトリ直下の `dango-release.jks` + `keystore.properties`（どちらも gitignore。
+  **紛失するとアップデート配布ができなくなるためバックアップ推奨**）
+- リリースビルドの R8 縮小は当面無効（smbj / sshj / BouncyCastle / zip4j などリフレクション依存が
+  多く keep ルール未整備のため。ルール整備後に有効化するのを今後の課題とする）
+- README を機能一覧＋スクリーンショット付きに刷新（撮影はエミュレータ ldfa35・日本語ロケール）
+
 ### 2026-08-31 — v1.0.0 後の修正・改善
 
 - **起動クラッシュ修正**: 生体認証ロック有効時に USE_BIOMETRIC 権限漏れで起動不能だった
