@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 三色団子の串。viewport 108dp、セーフゾーン中央 66dp -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 串 -->
+    <path
+        android:fillColor="#B08050"
+        android:pathData="M52.5,26 L55.5,26 L55.5,86 Q55.5,88 54,88 Q52.5,88 52.5,86 Z" />
+    <!-- 上: 桜 -->
+    <path
+        android:fillColor="#F5A8C0"
+        android:pathData="M54,30 m-11,0 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0" />
+    <!-- 中: 白 -->
+    <path
+        android:fillColor="#F8F2E8"
+        android:pathData="M54,52 m-11,0 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0" />
+    <!-- 下: 抹茶 -->
+    <path
+        android:fillColor="#8FBF6B"
+        android:pathData="M54,74 m-11,0 a11,11 0 1,1 22,0 a11,11 0 1,1 -22,0" />
+    <!-- ハイライト -->
+    <path
+        android:fillColor="#33FFFFFF"
+        android:pathData="M49,25 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+    <path
+        android:fillColor="#33FFFFFF"
+        android:pathData="M49,47 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+    <path
+        android:fillColor="#33FFFFFF"
+        android:pathData="M49,69 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+</vector>

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">dango</string>
+
+    <!-- オンボーディング -->
+    <string name="onboarding_title">すべてのファイルを表示するには</string>
+    <string name="onboarding_body">dango は Finder のように内部ストレージ全体を閲覧するファイラーです。すべてのフォルダとファイルを表示するには「すべてのファイルへのアクセス」の許可が必要です。許可しない場合は、閲覧できる範囲が制限された通常モードで動作します。</string>
+    <string name="onboarding_grant">フルアクセスを許可</string>
+    <string name="onboarding_skip">通常モードで続行</string>
+    <string name="normal_mode_banner">通常モード: 一部のファイルは表示されません</string>
+    <string name="normal_mode_grant">許可</string>
+
+    <!-- ツールバー -->
+    <string name="cd_sidebar">サイドバーを開閉</string>
+    <string name="cd_back">戻る</string>
+    <string name="cd_forward">進む</string>
+    <string name="cd_view_icon">アイコン表示</string>
+    <string name="cd_view_list">リスト表示</string>
+    <string name="cd_view_column">カラム表示（未対応）</string>
+    <string name="cd_view_gallery">ギャラリー表示（未対応）</string>
+    <string name="cd_sort">並べ替え</string>
+    <string name="cd_more">その他</string>
+
+    <!-- 並べ替え -->
+    <string name="sort_name">名前</string>
+    <string name="sort_kind">種類</string>
+    <string name="sort_size">サイズ</string>
+    <string name="sort_date">変更日</string>
+    <string name="sort_folders_first">フォルダを常に先頭</string>
+
+    <!-- メニュー -->
+    <string name="menu_show_hidden">隠しファイルを表示</string>
+    <string name="menu_reload">再読み込み</string>
+    <string name="menu_theme">テーマ</string>
+    <string name="theme_system">システムに従う</string>
+    <string name="theme_light">ライト</string>
+    <string name="theme_dark">ダーク</string>
+
+    <!-- サイドバー -->
+    <string name="sidebar_favorites">よく使う項目</string>
+    <string name="sidebar_locations">場所</string>
+    <string name="fav_downloads">ダウンロード</string>
+    <string name="fav_documents">書類</string>
+    <string name="fav_pictures">画像</string>
+    <string name="fav_movies">動画</string>
+    <string name="fav_music">音楽</string>
+    <string name="loc_internal">内部ストレージ</string>
+
+    <!-- リスト列ヘッダ -->
+    <string name="col_name">名前</string>
+    <string name="col_date">変更日</string>
+    <string name="col_size">サイズ</string>
+    <string name="col_kind">種類</string>
+
+    <!-- ステータスバー -->
+    <string name="status_items">%1$d 項目</string>
+    <string name="status_selected">%1$d 項目選択 / %2$d 項目</string>
+    <string name="status_free">%1$s 空き</string>
+
+    <!-- コンテンツ -->
+    <string name="empty_folder">フォルダは空です</string>
+    <string name="error_cannot_open">このフォルダを開けません</string>
+    <string name="restricted_folder">Android 11 以降のシステム制限により、このフォルダにはアクセスできません</string>
+    <string name="preview_not_yet">プレビューは M2 で対応予定です</string>
+    <string name="path_copied">パスをコピーしました</string>
+
+    <!-- 種類ラベル -->
+    <string name="kind_folder">フォルダ</string>
+</resources>
