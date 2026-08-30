@@ -501,9 +501,11 @@ private fun MainPane(
         contextMenuKey = contextMenuKey,
         contextMenuOffset = contextMenuOffset,
         onContextRequest = { entry, offset ->
-            // 右クリックは Finder 同様、選択に含まれていなければその項目を単独選択する
+            // 右クリックは Finder 同様、選択に含まれていなければその項目を単独選択する。
+            // onEntryTap だと「シングルタップで開く」設定でファイルが開いてしまうため、
+            // 開かない selectOnly を使う
             if (entry.path.key !in state.selection) {
-                viewModel.onEntryTap(entry)
+                viewModel.selectOnly(entry)
             }
             contextMenuOffset = offset
             contextMenuKey = entry.path.key
@@ -609,8 +611,12 @@ private fun MainPane(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        // 何もない場所の右クリック（アイテム側が consume するので重複しない）
-                        .onRightClick(requireUnconsumed = true) { offset ->
+                        // 何もない場所の右クリック。Main パスで待つことで、
+                        // アイテム側が Initial で consume した右クリックを正しく無視できる
+                        .onRightClick(
+                            requireUnconsumed = true,
+                            pass = androidx.compose.ui.input.pointer.PointerEventPass.Main,
+                        ) { offset ->
                             backgroundMenuAt =
                                 with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) }
                         },

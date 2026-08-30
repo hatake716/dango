@@ -11,27 +11,32 @@ import androidx.compose.ui.input.pointer.pointerInput
 
 /**
  * マウスの右クリック（セカンダリボタン）検出。
- * Initial パスで消費することで、同じノードの clickable / combinedClickable が
+ *
+ * アイテム側（既定）は Initial パスで消費し、同じノードの clickable / combinedClickable が
  * タップとして解釈するのを防ぐ（メニューと open() の同時発火バグ対策）。
- * requireUnconsumed=true の親ハンドラは、子が consume したイベントを無視するので
- * アイテム上とその背景でメニューを出し分けられる。
+ *
+ * 背景側は pass = Main + requireUnconsumed = true で使う。
+ * Initial パスは親→子の順に届くため、親も Initial で待つと子が消費する前に
+ * 受け取ってしまい、アイテム上の右クリックで両方のメニューが開いてしまう。
+ * Main パスは子→親の順なので、子（アイテム）が消費した右クリックを親が正しく無視できる。
  */
 fun Modifier.onRightClick(
     requireUnconsumed: Boolean = false,
+    pass: PointerEventPass = PointerEventPass.Initial,
     onRightClick: (Offset) -> Unit,
-): Modifier = pointerInput(requireUnconsumed) {
+): Modifier = pointerInput(requireUnconsumed, pass) {
     awaitEachGesture {
         val down = awaitFirstDown(
             requireUnconsumed = requireUnconsumed,
-            pass = PointerEventPass.Initial,
+            pass = pass,
         )
         if (down.type != PointerType.Mouse || !currentEvent.buttons.isSecondaryPressed) {
             return@awaitEachGesture
         }
         down.consume()
-        // ボタンが離されるまで Initial パスで消費し続けてから発火する
+        // ボタンが離されるまで同じパスで消費し続けてから発火する
         while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val event = awaitPointerEvent(pass)
             event.changes.forEach { it.consume() }
             if (!event.buttons.isSecondaryPressed && event.changes.all { !it.pressed }) break
         }
