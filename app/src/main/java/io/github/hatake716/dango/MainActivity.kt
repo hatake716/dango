@@ -161,27 +161,55 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
 
-    /** 端末の BiometricPrompt（生体認証＋画面ロック資格情報）。SPEC §10 */
+    /**
+     * 端末の BiometricPrompt（生体認証＋画面ロック資格情報）。SPEC §10。
+     * 認証手段が存在しない・プロンプトを出せない場合はロックアウトを避けるため解除する
+     * （このロックはプライバシー保護の利便機能であり、起動不能の方が実害が大きい）。
+     */
     private fun showBiometricPrompt(onSuccess: () -> Unit) {
-        val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
-            .setTitle(getString(R.string.lock_prompt_title))
-            .setSubtitle(getString(R.string.lock_prompt_subtitle))
-            .setAllowedAuthenticators(
-                android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                    android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+        // 画面ロック未設定の端末では認証しようがないので素通しする
+        val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+        if (keyguard?.isDeviceSecure != true) {
+            onSuccess()
+            return
+        }
+        try {
+            val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
+                .setTitle(getString(R.string.lock_prompt_title))
+                .setSubtitle(getString(R.string.lock_prompt_subtitle))
+                .setAllowedAuthenticators(
+                    android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                        android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                )
+                .build()
+            prompt.authenticate(
+                android.os.CancellationSignal(),
+                mainExecutor,
+                object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                    override fun onAuthenticationSucceeded(
+                        result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?,
+                    ) {
+                        onSuccess()
+                    }
+
+                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                        // 認証手段が無い系のエラーは解除して通す。
+                        // キャンセル等はロック画面に留まり、ボタンから再試行できる
+                        when (errorCode) {
+                            android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_HW_NOT_PRESENT,
+                            android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_HW_UNAVAILABLE,
+                            android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_NO_BIOMETRICS,
+                            android.hardware.biometrics.BiometricPrompt.BIOMETRIC_ERROR_NO_DEVICE_CREDENTIAL,
+                            -> onSuccess()
+                        }
+                    }
+                },
             )
-            .build()
-        prompt.authenticate(
-            android.os.CancellationSignal(),
-            mainExecutor,
-            object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(
-                    result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?,
-                ) {
-                    onSuccess()
-                }
-            },
-        )
+        } catch (e: Exception) {
+            // プロンプト自体を出せない環境では起動不能にしない
+            android.util.Log.d("dango", "biometric prompt failed: $e")
+            onSuccess()
+        }
     }
 
     private fun openFullAccessSettings() {
