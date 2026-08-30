@@ -50,7 +50,13 @@ class LocalFileSystemProvider : FileSystemProvider {
     }
 
     override suspend fun rename(from: FsPath, to: FsPath) = withContext(Dispatchers.IO) {
-        if (!from.toFile().renameTo(to.toFile())) {
+        val src = from.toFile()
+        val dst = to.toFile()
+        // rename(2) は既存ファイルを黙って置き換えるため、リネーム経由の上書き破壊を全経路で遮断する
+        if (dst.exists() && src.canonicalPath != dst.canonicalPath) {
+            throw IOException("already exists: ${to.displayPath()}")
+        }
+        if (!src.renameTo(dst)) {
             throw IOException("rename failed: ${from.displayPath()} -> ${to.displayPath()}")
         }
     }
@@ -104,7 +110,8 @@ class LocalFileSystemProvider : FileSystemProvider {
     private fun File.toEntry(): FsEntry {
         val dir = isDirectory
         val ext = name.substringAfterLast('.', "").lowercase()
-        val kind = if (dir) EntryKind.FOLDER else kindOf(ext)
+        val kind = if (dir) EntryKind.FOLDER else kindOfExtension(ext)
+        val uri = Uri.fromFile(this).toString()
         return FsEntry(
             path = fromAbsolutePath(absolutePath),
             name = name,
@@ -113,12 +120,9 @@ class LocalFileSystemProvider : FileSystemProvider {
             lastModified = lastModified(),
             isHidden = name.startsWith("."),
             kind = kind,
-            previewUri = if (kind == EntryKind.IMAGE && ext != "svg") {
-                Uri.fromFile(this).toString()
-            } else {
-                null
-            },
+            previewUri = if (!dir && hasPreview(ext)) uri else null,
             isRestricted = dir && isRestrictedDir(absolutePath),
+            fileUri = uri,
         )
     }
 
@@ -149,7 +153,7 @@ class LocalFileSystemProvider : FileSystemProvider {
             "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "zst", "rar",
         )
 
-        private fun kindOf(ext: String): EntryKind = when (ext) {
+        fun kindOfExtension(ext: String): EntryKind = when (ext) {
             in IMAGE_EXT -> EntryKind.IMAGE
             in VIDEO_EXT -> EntryKind.VIDEO
             in AUDIO_EXT -> EntryKind.AUDIO
@@ -159,5 +163,8 @@ class LocalFileSystemProvider : FileSystemProvider {
             "apk" -> EntryKind.APK
             else -> EntryKind.OTHER
         }
+
+        /** Coil でサムネイル描画できる拡張子（画像＋GIF/SVG＋動画フレーム） */
+        fun hasPreview(ext: String): Boolean = ext in IMAGE_EXT || ext in VIDEO_EXT
     }
 }

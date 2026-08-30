@@ -16,10 +16,16 @@ import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Collections
+import androidx.compose.material.icons.outlined.ContentPaste
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material.icons.outlined.ViewSidebar
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -61,6 +67,10 @@ fun DangoToolbar(
     sort: SortSpec,
     showHidden: Boolean,
     themeMode: ThemeMode,
+    selectionMode: Boolean,
+    selectionCount: Int,
+    isTrash: Boolean,
+    hasClipboard: Boolean,
     onToggleSidebar: () -> Unit,
     onBack: () -> Unit,
     onForward: () -> Unit,
@@ -70,6 +80,14 @@ fun DangoToolbar(
     onToggleShowHidden: () -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onReload: () -> Unit,
+    onExitSelection: () -> Unit,
+    onSelectAll: () -> Unit,
+    onInvertSelection: () -> Unit,
+    onStartSelection: () -> Unit,
+    onNewFolder: () -> Unit,
+    onNewTextFile: (String) -> Unit,
+    onPaste: () -> Unit,
+    onEmptyTrash: () -> Unit,
 ) {
     val colors = DangoTheme.colors
     Row(
@@ -81,41 +99,99 @@ fun DangoToolbar(
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ToolbarIconButton(
-            icon = Icons.Outlined.ViewSidebar,
-            contentDescription = stringResource(R.string.cd_sidebar),
-            onClick = onToggleSidebar,
+        if (selectionMode) {
+            ToolbarIconButton(
+                icon = Icons.Outlined.Close,
+                contentDescription = stringResource(R.string.cd_exit_selection),
+                onClick = onExitSelection,
+            )
+            Text(
+                text = stringResource(R.string.sel_count, selectionCount),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 6.dp),
+                color = colors.textPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = (-0.2).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            ToolbarIconButton(
+                icon = Icons.Outlined.SelectAll,
+                contentDescription = stringResource(R.string.cd_select_all),
+                onClick = onSelectAll,
+            )
+            SelectionMenuButton(onInvertSelection)
+        } else {
+            ToolbarIconButton(
+                icon = Icons.Outlined.ViewSidebar,
+                contentDescription = stringResource(R.string.cd_sidebar),
+                onClick = onToggleSidebar,
+            )
+            ToolbarIconButton(
+                icon = Icons.Rounded.ChevronLeft,
+                contentDescription = stringResource(R.string.cd_back),
+                onClick = onBack,
+                enabled = canGoBack,
+            )
+            ToolbarIconButton(
+                icon = Icons.Rounded.ChevronRight,
+                contentDescription = stringResource(R.string.cd_forward),
+                onClick = onForward,
+                enabled = canGoForward,
+            )
+            Text(
+                text = title,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 6.dp),
+                color = colors.textPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = (-0.2).sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            ViewModeButton(ViewMode.ICON, Icons.Outlined.GridView, R.string.cd_view_icon, viewMode, onSetViewMode)
+            ViewModeButton(ViewMode.LIST, Icons.AutoMirrored.Outlined.ViewList, R.string.cd_view_list, viewMode, onSetViewMode)
+            ViewModeButton(ViewMode.COLUMN, Icons.Outlined.ViewColumn, R.string.cd_view_column, viewMode, onSetViewMode, enabled = false)
+            ViewModeButton(ViewMode.GALLERY, Icons.Outlined.Collections, R.string.cd_view_gallery, viewMode, onSetViewMode, enabled = false)
+            SortMenuButton(sort, onSetSortKey, onToggleFoldersFirst)
+            OverflowMenuButton(
+                showHidden = showHidden,
+                themeMode = themeMode,
+                isTrash = isTrash,
+                hasClipboard = hasClipboard,
+                onToggleShowHidden = onToggleShowHidden,
+                onSetThemeMode = onSetThemeMode,
+                onReload = onReload,
+                onStartSelection = onStartSelection,
+                onNewFolder = onNewFolder,
+                onNewTextFile = onNewTextFile,
+                onPaste = onPaste,
+                onEmptyTrash = onEmptyTrash,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectionMenuButton(onInvertSelection: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ToolbarIconButton(
+        icon = Icons.Outlined.MoreHoriz,
+        contentDescription = stringResource(R.string.cd_more),
+        onClick = { expanded = true },
+    )
+    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.menu_invert_selection)) },
+            onClick = {
+                expanded = false
+                onInvertSelection()
+            },
         )
-        ToolbarIconButton(
-            icon = Icons.Rounded.ChevronLeft,
-            contentDescription = stringResource(R.string.cd_back),
-            onClick = onBack,
-            enabled = canGoBack,
-        )
-        ToolbarIconButton(
-            icon = Icons.Rounded.ChevronRight,
-            contentDescription = stringResource(R.string.cd_forward),
-            onClick = onForward,
-            enabled = canGoForward,
-        )
-        Text(
-            text = title,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 6.dp),
-            color = colors.textPrimary,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = (-0.2).sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        ViewModeButton(ViewMode.ICON, Icons.Outlined.GridView, R.string.cd_view_icon, viewMode, onSetViewMode)
-        ViewModeButton(ViewMode.LIST, Icons.AutoMirrored.Outlined.ViewList, R.string.cd_view_list, viewMode, onSetViewMode)
-        ViewModeButton(ViewMode.COLUMN, Icons.Outlined.ViewColumn, R.string.cd_view_column, viewMode, onSetViewMode, enabled = false)
-        ViewModeButton(ViewMode.GALLERY, Icons.Outlined.Collections, R.string.cd_view_gallery, viewMode, onSetViewMode, enabled = false)
-        SortMenuButton(sort, onSetSortKey, onToggleFoldersFirst)
-        OverflowMenuButton(showHidden, themeMode, onToggleShowHidden, onSetThemeMode, onReload)
     }
 }
 
@@ -224,9 +300,16 @@ private fun SortMenuButton(
 private fun OverflowMenuButton(
     showHidden: Boolean,
     themeMode: ThemeMode,
+    isTrash: Boolean,
+    hasClipboard: Boolean,
     onToggleShowHidden: () -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onReload: () -> Unit,
+    onStartSelection: () -> Unit,
+    onNewFolder: () -> Unit,
+    onNewTextFile: (String) -> Unit,
+    onPaste: () -> Unit,
+    onEmptyTrash: () -> Unit,
 ) {
     val colors = DangoTheme.colors
     var expanded by remember { mutableStateOf(false) }
@@ -236,6 +319,62 @@ private fun OverflowMenuButton(
         onClick = { expanded = true },
     )
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        if (!isTrash) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_new_folder)) },
+                onClick = {
+                    expanded = false
+                    onNewFolder()
+                },
+                leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null, modifier = Modifier.size(16.dp)) },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_new_text)) },
+                onClick = {
+                    expanded = false
+                    onNewTextFile("txt")
+                },
+                leadingIcon = { Icon(Icons.Outlined.NoteAdd, null, modifier = Modifier.size(16.dp)) },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_new_markdown)) },
+                onClick = {
+                    expanded = false
+                    onNewTextFile("md")
+                },
+                leadingIcon = { Icon(Icons.Outlined.NoteAdd, null, modifier = Modifier.size(16.dp)) },
+            )
+            if (hasClipboard) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.clip_paste)) },
+                    onClick = {
+                        expanded = false
+                        onPaste()
+                    },
+                    leadingIcon = { Icon(Icons.Outlined.ContentPaste, null, modifier = Modifier.size(16.dp)) },
+                )
+            }
+            HorizontalDivider(color = colors.divider)
+        }
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.menu_select)) },
+            onClick = {
+                expanded = false
+                onStartSelection()
+            },
+            leadingIcon = { Icon(Icons.Outlined.SelectAll, null, modifier = Modifier.size(16.dp)) },
+        )
+        if (isTrash) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_empty_trash)) },
+                onClick = {
+                    expanded = false
+                    onEmptyTrash()
+                },
+                leadingIcon = { Icon(Icons.Outlined.DeleteForever, null, modifier = Modifier.size(16.dp)) },
+            )
+        }
+        HorizontalDivider(color = colors.divider)
         DropdownMenuItem(
             text = { Text(stringResource(R.string.menu_show_hidden)) },
             onClick = onToggleShowHidden,

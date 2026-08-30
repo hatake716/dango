@@ -35,10 +35,14 @@ data class FsEntry(
     val lastModified: Long,
     val isHidden: Boolean,
     val kind: EntryKind,
-    /** サムネイル表示に使えるURI（画像のみ。UIはこの文字列をローダに渡すだけ） */
+    /** サムネイル表示に使えるURI（画像・動画。UIはこの文字列をローダに渡すだけ） */
     val previewUri: String?,
     /** OS制限でアクセス不可（Android/data 等）。グレー表示し、開くと理由を通知する（SPEC §3） */
     val isRestricted: Boolean = false,
+    /** ローカル実体の URI（プレーヤー・共有などに渡す。UI が File を直接触らないための橋渡し） */
+    val fileUri: String? = null,
+    /** ゴミ箱項目のときだけ非 null（Room の TrashEntry id） */
+    val trashId: Long? = null,
 ) {
     val extension: String
         get() = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
@@ -55,3 +59,24 @@ data class SortSpec(
 )
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+/** 内部クリップボード（SPEC §6.3: 複数回ペースト可） */
+enum class ClipboardMode { COPY, MOVE }
+
+data class ClipboardState(
+    val entries: List<FsEntry>,
+    val mode: ClipboardMode,
+)
+
+/** 同名衝突時の選択（SPEC §6.3） */
+enum class ConflictResolution { KEEP_BOTH, REPLACE, SKIP, CANCEL_ALL }
+
+data class ConflictChoice(
+    val resolution: ConflictResolution,
+    val applyToAll: Boolean,
+)
+
+/** Quick Look で表示できる種別（SPEC §6.5。フォント・アーカイブ・APK は M3 以降） */
+val PREVIEWABLE_KINDS = setOf(
+    EntryKind.IMAGE, EntryKind.VIDEO, EntryKind.AUDIO, EntryKind.PDF, EntryKind.TEXT,
+)

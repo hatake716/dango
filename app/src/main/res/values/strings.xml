@@ -20,6 +20,9 @@
     <string name="cd_view_gallery">ギャラリー表示（未対応）</string>
     <string name="cd_sort">並べ替え</string>
     <string name="cd_more">その他</string>
+    <string name="cd_exit_selection">選択を解除</string>
+    <string name="cd_select_all">すべて選択</string>
+    <string name="sel_count">%1$d 項目を選択中</string>
 
     <!-- 並べ替え -->
     <string name="sort_name">名前</string>
@@ -35,6 +38,12 @@
     <string name="theme_system">システムに従う</string>
     <string name="theme_light">ライト</string>
     <string name="theme_dark">ダーク</string>
+    <string name="menu_new_folder">新規フォルダ</string>
+    <string name="menu_new_text">新規テキストファイル</string>
+    <string name="menu_new_markdown">新規 Markdown ファイル</string>
+    <string name="menu_select">選択…</string>
+    <string name="menu_invert_selection">選択の反転</string>
+    <string name="menu_empty_trash">ゴミ箱を空にする</string>
 
     <!-- サイドバー -->
     <string name="sidebar_favorites">よく使う項目</string>
@@ -45,6 +54,7 @@
     <string name="fav_movies">動画</string>
     <string name="fav_music">音楽</string>
     <string name="loc_internal">内部ストレージ</string>
+    <string name="loc_trash">ゴミ箱</string>
 
     <!-- リスト列ヘッダ -->
     <string name="col_name">名前</string>
@@ -59,11 +69,142 @@
 
     <!-- コンテンツ -->
     <string name="empty_folder">フォルダは空です</string>
+    <string name="trash_empty">ゴミ箱は空です</string>
     <string name="error_cannot_open">このフォルダを開けません</string>
     <string name="restricted_folder">Android 11 以降のシステム制限により、このフォルダにはアクセスできません</string>
-    <string name="preview_not_yet">プレビューは M2 で対応予定です</string>
+    <string name="trash_folder_preview">フォルダは「元に戻す」で復元してから開いてください</string>
     <string name="path_copied">パスをコピーしました</string>
 
     <!-- 種類ラベル -->
     <string name="kind_folder">フォルダ</string>
+
+    <!-- ファイル操作 -->
+    <string name="untitled_folder">名称未設定フォルダ</string>
+    <string name="untitled_file">名称未設定</string>
+    <string name="op_failed">操作に失敗しました</string>
+    <string name="rename_invalid">その名前は使用できません</string>
+    <string name="rename_exists">同じ名前の項目が既にあります</string>
+    <string name="clip_copied">コピーしました。貼り付け先で「貼り付け」を選んでください</string>
+    <string name="clip_cut">移動待ちにしました。移動先で「ここに移動」を選んでください</string>
+    <string name="paste_into_itself">フォルダを自分自身の中へコピー・移動することはできません</string>
+    <string name="share_no_files">共有できるファイルがありません（フォルダは共有できません）</string>
+
+    <!-- クリップボードバー -->
+    <string name="clip_bar_copy">%1$d 項目をコピー中</string>
+    <string name="clip_bar_move">%1$d 項目を移動待ち</string>
+    <string name="clip_paste">貼り付け</string>
+    <string name="clip_move_here">ここに移動</string>
+    <string name="cd_clear_clipboard">クリップボードをクリア</string>
+
+    <!-- アクションバー -->
+    <string name="act_preview">プレビュー</string>
+    <string name="act_share">共有</string>
+    <string name="act_copy">コピー</string>
+    <string name="act_move">移動</string>
+    <string name="act_duplicate">複製</string>
+    <string name="act_rename">リネーム</string>
+    <string name="act_compress">圧縮</string>
+    <string name="act_delete">削除</string>
+    <string name="act_info">情報</string>
+    <string name="act_restore">元に戻す</string>
+    <string name="act_delete_forever">すぐに削除</string>
+
+    <!-- 転送 -->
+    <string name="transfer_preparing">準備中…</string>
+    <string name="transfer_copying">コピー中 (%1$d/%2$d)</string>
+    <string name="transfer_moving">移動中 (%1$d/%2$d)</string>
+    <string name="transfer_cancel">キャンセル</string>
+    <string name="transfer_channel_name">ファイル転送</string>
+    <string name="transfer_done">完了しました</string>
+    <string name="transfer_partial">一部の項目を処理できませんでした</string>
+    <string name="transfer_cancelled">キャンセルしました</string>
+    <string name="transfer_status_copy">コピー中…</string>
+    <string name="transfer_status_move">移動中…</string>
+
+    <!-- 同名衝突 -->
+    <string name="conflict_title">「%1$s」は既にあります</string>
+    <string name="conflict_body">同じ名前の項目がこの場所に既にあります。どうしますか？</string>
+    <string name="conflict_keep_both">両方残す</string>
+    <string name="conflict_replace">置き換える</string>
+    <string name="conflict_skip">スキップ</string>
+    <string name="conflict_apply_all">以降すべてに適用</string>
+    <string name="conflict_cancel_all">キャンセル</string>
+
+    <!-- 削除・ゴミ箱 -->
+    <string name="trash_done">%1$d 項目をゴミ箱に入れました</string>
+    <string name="undo">元に戻す</string>
+    <string name="delete_confirm_title">完全に削除しますか？</string>
+    <string name="delete_confirm_body">%1$d 項目を完全に削除します。この操作は取り消せません。</string>
+    <string name="empty_trash_confirm_body">ゴミ箱のすべての項目を完全に削除します。この操作は取り消せません。</string>
+    <string name="delete_confirm_ok">削除</string>
+    <string name="cancel">キャンセル</string>
+    <string name="trash_deleted_forever">完全に削除しました</string>
+    <string name="trash_restored">元に戻しました</string>
+    <string name="trash_restore_partial">一部の項目を元に戻せませんでした（ゴミ箱に残っています）</string>
+
+    <!-- 一括リネーム -->
+    <string name="batch_rename_title">一括リネーム</string>
+    <string name="batch_mode_seq">連番</string>
+    <string name="batch_mode_replace">検索置換</string>
+    <string name="batch_mode_affix">前後に追加</string>
+    <string name="batch_base_name">ベース名</string>
+    <string name="batch_start_number">開始番号</string>
+    <string name="batch_find">検索する文字列</string>
+    <string name="batch_replace_with">置換後の文字列</string>
+    <string name="batch_prefix">接頭辞</string>
+    <string name="batch_suffix">接尾辞</string>
+    <string name="batch_apply">適用</string>
+    <string name="batch_preview">プレビュー: %1$s</string>
+
+    <!-- Quick Look -->
+    <string name="ql_open_with">別のアプリで開く</string>
+    <string name="ql_share">共有</string>
+    <string name="ql_info">情報</string>
+    <string name="ql_close">閉じる</string>
+    <string name="ql_load_error">読み込めませんでした</string>
+    <string name="ql_page_of">%1$d / %2$d</string>
+    <string name="ql_speed">速度</string>
+    <string name="ql_pdf_password_title">パスワード付き PDF</string>
+    <string name="ql_pdf_password_body">この PDF はパスワードで保護されています。</string>
+    <string name="ql_pdf_password_hint">パスワード</string>
+    <string name="ql_pdf_unlock">開く</string>
+    <string name="ql_pdf_wrong_password">パスワードが違います。もう一度入力してください。</string>
+    <string name="ql_pdf_unsupported">この端末ではパスワード付き PDF を開けません（Android 15 以降で対応）</string>
+
+    <!-- テキストプレビュー / 簡易編集（SPEC §6.5.1） -->
+    <string name="txt_wrap">折り返し</string>
+    <string name="txt_load_all">すべて読み込む</string>
+    <string name="txt_truncated">先頭 2MB のみ表示中</string>
+    <string name="txt_edit">編集</string>
+    <string name="txt_save">保存</string>
+    <string name="txt_save_confirm_title">保存しますか？</string>
+    <string name="txt_save_confirm_body">「%1$s」を上書き保存します。</string>
+    <string name="txt_saved">保存しました</string>
+    <string name="txt_saved_utf8">元の文字コードで表現できない文字があるため、UTF-8 で保存しました</string>
+    <string name="txt_line_ending">改行コード</string>
+    <string name="txt_find">検索</string>
+    <string name="txt_replace">置換</string>
+    <string name="txt_replace_all">すべて置換</string>
+    <string name="txt_next">次へ</string>
+    <string name="txt_unsaved_title">変更を保存しますか？</string>
+    <string name="txt_unsaved_body">保存していない変更があります。</string>
+    <string name="txt_discard">破棄</string>
+    <string name="txt_read_only">2MB を超えるため読み取り専用です</string>
+    <string name="txt_undo">取り消す</string>
+    <string name="txt_redo">やり直す</string>
+
+    <!-- 情報ウィンドウ -->
+    <string name="info_title">情報</string>
+    <string name="info_name">名前</string>
+    <string name="info_kind">種類</string>
+    <string name="info_size">サイズ</string>
+    <string name="info_location">場所</string>
+    <string name="info_created">作成日</string>
+    <string name="info_modified">変更日</string>
+    <string name="info_permissions">アクセス権</string>
+    <string name="info_hash_md5">MD5</string>
+    <string name="info_hash_sha256">SHA-256</string>
+    <string name="info_compute">計算</string>
+    <string name="info_items">%1$d 項目</string>
+    <string name="info_calculating">計算中…</string>
 </resources>

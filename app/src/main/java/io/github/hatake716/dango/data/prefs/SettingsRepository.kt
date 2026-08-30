@@ -5,6 +5,7 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.hatake716.dango.domain.model.SortKey
@@ -27,6 +28,8 @@ data class Settings(
     val sort: SortSpec = SortSpec(),
     val showHidden: Boolean = false,
     val onboardingDone: Boolean = false,
+    /** アイコン表示のサイズ（SPEC §4.4: ピンチで 48〜256dp） */
+    val iconSizeDp: Int = 76,
 )
 
 /** テーマ・表示設定の永続化（SPEC §8.1 data/prefs。フォルダごとの記憶は M1 以降で Room へ） */
@@ -47,8 +50,13 @@ class SettingsRepository(private val context: Context) {
                 ),
                 showHidden = p[KEY_SHOW_HIDDEN] ?: false,
                 onboardingDone = p[KEY_ONBOARDING_DONE] ?: false,
+                iconSizeDp = (p[KEY_ICON_SIZE] ?: 76).coerceIn(48, 256),
             )
         }
+
+    suspend fun setIconSizeDp(size: Int) {
+        context.dataStore.edit { it[KEY_ICON_SIZE] = size.coerceIn(48, 256) }
+    }
 
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { it[KEY_THEME] = mode.name }
@@ -96,5 +104,6 @@ class SettingsRepository(private val context: Context) {
         val KEY_FOLDERS_FIRST = booleanPreferencesKey("folders_first")
         val KEY_SHOW_HIDDEN = booleanPreferencesKey("show_hidden")
         val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val KEY_ICON_SIZE = intPreferencesKey("icon_size_dp")
     }
 }

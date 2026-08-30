@@ -18,6 +18,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Image
@@ -47,6 +48,7 @@ private val sidebarIcons: Map<String, ImageVector> = mapOf(
     "movies" to Icons.Outlined.Movie,
     "music" to Icons.Outlined.MusicNote,
     "internal" to Icons.Outlined.Smartphone,
+    "trash" to Icons.Outlined.Delete,
 )
 
 @Composable

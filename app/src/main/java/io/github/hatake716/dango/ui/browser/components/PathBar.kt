@@ -38,11 +38,15 @@ fun PathBar(
     val clipboard = LocalClipboardManager.current
     val scrollState = rememberScrollState()
 
-    val crumbs: List<Pair<String, FsPath>> = buildCrumbs(
-        currentPath = currentPath,
-        internalRoot = internalRoot,
-        internalLabel = stringResource(R.string.loc_internal),
-    )
+    val crumbs: List<Pair<String, FsPath>> = if (currentPath.scheme == "trash") {
+        listOf(stringResource(R.string.loc_trash) to currentPath)
+    } else {
+        buildCrumbs(
+            currentPath = currentPath,
+            internalRoot = internalRoot,
+            internalLabel = stringResource(R.string.loc_internal),
+        )
+    }
 
     LaunchedEffect(currentPath) {
         scrollState.scrollTo(scrollState.maxValue)

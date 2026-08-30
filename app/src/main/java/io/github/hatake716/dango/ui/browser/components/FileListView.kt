@@ -1,11 +1,15 @@
 package io.github.hatake716.dango.ui.browser.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,16 +25,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -40,9 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import io.github.hatake716.dango.R
-import io.github.hatake716.dango.domain.model.FsEntry
 import io.github.hatake716.dango.domain.model.SortKey
 import io.github.hatake716.dango.domain.model.SortSpec
+import io.github.hatake716.dango.ui.browser.TreeRow
 import io.github.hatake716.dango.ui.theme.DangoTheme
 import io.github.hatake716.dango.ui.util.formatDateTime
 import io.github.hatake716.dango.ui.util.formatSize
@@ -52,31 +61,47 @@ private val DATE_WIDTH = 128.dp
 private val SIZE_WIDTH = 76.dp
 private val KIND_WIDTH = 112.dp
 
-/** リスト表示（SPEC §4.4。列のカスタマイズ・▸ツリー展開は M1 以降） */
+/** リスト表示（SPEC §4.4: ▸ でツリー展開。列カスタマイズは M5） */
 @Composable
 fun FileListView(
-    entries: List<FsEntry>,
+    rows: List<TreeRow>,
     selection: Set<String>,
     sort: SortSpec,
-    onTap: (FsEntry) -> Unit,
-    onDoubleTap: (FsEntry) -> Unit,
-    onLongPress: (FsEntry) -> Unit,
+    renamingKey: String?,
+    pastedKeys: Set<String>,
+    onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onLongPress: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onToggleExpand: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onSetSortKey: (SortKey) -> Unit,
+    onCommitRename: (String, String) -> Unit,
+    onCancelRename: () -> Unit,
+    showExpanders: Boolean,
 ) {
     val colors = DangoTheme.colors
     Column(modifier = Modifier.fillMaxSize()) {
         ListHeader(sort, onSetSortKey)
         HorizontalDivider(color = colors.divider)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            itemsIndexed(entries, key = { _, e -> e.path.key }) { index, entry ->
+            itemsIndexed(rows, key = { _, r -> r.entry.path.key }) { index, row ->
                 ListRow(
-                    entry = entry,
-                    selected = entry.path.key in selection,
+                    row = row,
+                    selected = row.entry.path.key in selection,
                     isAlt = index % 2 == 1,
+                    renaming = row.entry.path.key == renamingKey,
+                    pulse = row.entry.path.key in pastedKeys,
+                    showExpander = showExpanders,
                     onTap = onTap,
                     onDoubleTap = onDoubleTap,
                     onLongPress = onLongPress,
-                    modifier = Modifier.animateItem(placementSpec = tween(250)),
+                    onToggleExpand = onToggleExpand,
+                    onCommitRename = onCommitRename,
+                    onCancelRename = onCancelRename,
+                    modifier = Modifier.animateItem(
+                        placementSpec = tween(250),
+                        fadeInSpec = tween(180),
+                        fadeOutSpec = tween(300),
+                    ),
                 )
             }
         }
@@ -124,11 +149,7 @@ private fun HeaderCell(
             .clickable { onSetSortKey(key) }
             .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (textAlign == TextAlign.End) {
-            androidx.compose.foundation.layout.Arrangement.End
-        } else {
-            androidx.compose.foundation.layout.Arrangement.Start
-        },
+        horizontalArrangement = if (textAlign == TextAlign.End) Arrangement.End else Arrangement.Start,
     ) {
         Text(
             text = label,
@@ -152,15 +173,22 @@ private fun HeaderCell(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ListRow(
-    entry: FsEntry,
+    row: TreeRow,
     selected: Boolean,
     isAlt: Boolean,
-    onTap: (FsEntry) -> Unit,
-    onDoubleTap: (FsEntry) -> Unit,
-    onLongPress: (FsEntry) -> Unit,
+    renaming: Boolean,
+    pulse: Boolean,
+    showExpander: Boolean,
+    onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onLongPress: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onToggleExpand: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onCommitRename: (String, String) -> Unit,
+    onCancelRename: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = DangoTheme.colors
+    val entry = row.entry
     val background by animateColorAsState(
         targetValue = when {
             selected -> colors.selectionFocused
@@ -172,20 +200,57 @@ private fun ListRow(
     )
     val primary = if (selected) colors.onSelection else colors.textPrimary
     val secondary = if (selected) colors.onSelection.copy(alpha = 0.85f) else colors.textSecondary
+    // ▸ の 90° 回転（SPEC §5: 180ms）
+    val chevronAngle by animateFloatAsState(
+        targetValue = if (row.expanded) 90f else 0f,
+        animationSpec = tween(180),
+        label = "chevron",
+    )
+    val pulseScale = remember { Animatable(1f) }
+    LaunchedEffect(pulse) {
+        if (pulse) {
+            pulseScale.animateTo(1.05f, tween(125))
+            pulseScale.animateTo(1f, tween(125))
+        }
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(32.dp)
             .background(background)
+            .graphicsLayer {
+                scaleX = pulseScale.value
+                scaleY = pulseScale.value
+            }
             .alpha(if (entry.isRestricted) 0.45f else 1f)
             .combinedClickable(
                 onClick = { onTap(entry) },
                 onDoubleClick = { onDoubleTap(entry) },
                 onLongClick = { onLongPress(entry) },
             )
-            .padding(horizontal = 12.dp),
+            .padding(start = (12 + row.depth * 18).dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (showExpander) {
+            Box(
+                modifier = Modifier.size(18.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (entry.isDir && !entry.isRestricted) {
+                    Icon(
+                        imageVector = Icons.Rounded.ChevronRight,
+                        contentDescription = null,
+                        tint = secondary,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .rotate(chevronAngle)
+                            .clip(RoundedCornerShape(3.dp))
+                            .clickable { onToggleExpand(entry) },
+                    )
+                }
+            }
+            Spacer(Modifier.width(2.dp))
+        }
         if (entry.previewUri != null) {
             AsyncImage(
                 model = entry.previewUri,
@@ -204,14 +269,25 @@ private fun ListRow(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            text = entry.name,
-            color = primary,
-            fontSize = 13.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        if (renaming) {
+            InlineRenameField(
+                initialName = entry.name,
+                isDir = entry.isDir,
+                textAlign = TextAlign.Start,
+                onCommit = { onCommitRename(entry.path.key, it) },
+                onCancel = onCancelRename,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Text(
+                text = entry.name,
+                color = primary,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
         Text(
             text = formatDateTime(entry.lastModified),
             color = secondary,
