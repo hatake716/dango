@@ -12,9 +12,16 @@ import io.github.hatake716.dango.data.archive.ArchivePasswordException
 import io.github.hatake716.dango.data.archive.ArchivePaths
 import io.github.hatake716.dango.data.archive.ArchiveUnsupportedException
 import io.github.hatake716.dango.data.archive.CompressFormat
+import io.github.hatake716.dango.data.db.ConnectionEntity
+import io.github.hatake716.dango.data.db.EntryTagEntity
 import io.github.hatake716.dango.data.fs.NameUtils
 import io.github.hatake716.dango.data.fs.local.LocalFileSystemProvider
 import io.github.hatake716.dango.data.fs.local.LocalLocations
+import io.github.hatake716.dango.data.net.HostKeyChangedException
+import io.github.hatake716.dango.data.net.NetPaths
+import io.github.hatake716.dango.data.net.NetProtocol
+import io.github.hatake716.dango.data.net.NetworkAuthException
+import io.github.hatake716.dango.data.net.NetworkTester
 import io.github.hatake716.dango.domain.model.ClipboardMode
 import io.github.hatake716.dango.domain.model.ClipboardState
 import io.github.hatake716.dango.domain.model.EntryKind
@@ -36,6 +43,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.toList
@@ -110,18 +119,40 @@ data class BrowserUiState(
     val extractOptionsFor: FsEntry? = null,
     /** パスワード入力待ちのアーカイブ表示名（null なら非表示） */
     val archivePasswordAsk: String? = null,
+    /** ネットワークドライブ閲覧中（SPEC §7） */
+    val isNetwork: Boolean = false,
+    /** エントリ key → 付与タグ色の集合（SPEC §6.3 タグ） */
+    val tagsByKey: Map<String, Set<String>> = emptyMap(),
+    /** 検索モード（SPEC §6.7: インクリメンタル検索） */
+    val searchActive: Boolean = false,
+    val searchQuery: String = "",
+    /** false=現在フォルダ以下 / true=内部ストレージ全体 */
+    val searchGlobal: Boolean = false,
+    val searching: Boolean = false,
+    /** 設定画面（SPEC §10） */
+    val showSettings: Boolean = false,
+    /** 接続追加/編集ダイアログ（SPEC §7.2）。id=0 は新規 */
+    val editingConnection: ConnectionEntity? = null,
+    /** ネットワークパスワード入力（接続ID と表示名） */
+    val netPasswordAsk: Pair<Long, String>? = null,
 )
 
 class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     private val container = (app as DangoApp).container
-    private val provider = container.fileSystemProvider
+    private val registry = container.providerRegistry
     private val settingsRepo = container.settingsRepository
     private val trashManager = container.trashManager
     private val transferManager = container.transferManager
     private val archiveManager = container.archiveManager
+    private val connectionDao = container.database.connectionDao()
+    private val tagDao = container.database.entryTagDao()
+    private val credentialStore = container.credentialStore
+    private val netPreviewCache = container.netPreviewCache
     val infoLoader = container.infoLoader
     val textFileStore = container.textFileStore
+
+    private fun providerFor(path: FsPath) = registry.forPath(path)
 
     /** アーカイブごとの入力済みパスワードと文字コード指定（セッション内のみ保持） */
     private val archivePasswords = mutableMapOf<String, String>()
@@ -145,6 +176,13 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         SidebarItem("trash", R.string.loc_trash, TRASH_PATH),
     )
 
+    /** 保存済みネットワーク接続（SPEC §4.3 サイドバー「ネットワーク」） */
+    val connections: StateFlow<List<ConnectionEntity>> = connectionDao.observeAll()
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** タグの7色（SPEC §6.3, §9） */
+    val tagColors: List<String> = TAG_COLORS
+
     // 初期値 null: DataStore の実値が届く前に既定値で UI を確定させない（起動時フラッシュ防止)
     val settings = settingsRepo.settings
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -165,6 +203,11 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     private val backStack = ArrayDeque<FsPath>()
     private val forwardStack = ArrayDeque<FsPath>()
     private var rawEntries: List<FsEntry> = emptyList()
+    private var searchJob: Job? = null
+    private var pendingNetOp: (() -> Unit)? = null
+
+    /** カラム表示の列ごとの一覧キャッシュ（SPEC §4.4。操作後の refresh でクリア） */
+    private val columnCache = mutableMapOf<String, List<FsEntry>>()
     private var loadJob: Job? = null
     private var iconSizePersistJob: Job? = null
 
@@ -173,7 +216,11 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     private val childrenCache = mutableMapOf<String, List<FsEntry>>()
 
     init {
-        viewModelScope.launch { trashManager.purgeExpired() } // 30日で自動削除（SPEC §6.6）
+        viewModelScope.launch {
+            // 自動削除日数は設定に従う（SPEC §6.6, §10）
+            val days = settingsRepo.settings.filterNotNull().firstOrNull()?.trashAutoDays ?: 30
+            trashManager.purgeExpired(days.toLong())
+        }
         viewModelScope.launch {
             settings.filterNotNull().collect { s ->
                 val visible = applyView(rawEntries, s.sort, s.showHidden)
@@ -227,6 +274,13 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             navigateTo(LocalFileSystemProvider.fromAbsolutePath(parentDir), NavDirection.BACKWARD)
             return
         }
+        // ネットワーク接続のルート・タグ検索から上へ出るときは内部ストレージへ
+        if ((NetPaths.isNetwork(current) && current.segments.size <= 1) ||
+            current.scheme == TAG_SCHEME
+        ) {
+            navigateTo(internalRoot, NavDirection.BACKWARD)
+            return
+        }
         val parent = current.parent ?: return
         navigateTo(parent, NavDirection.BACKWARD)
     }
@@ -244,12 +298,13 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             if (_state.value.currentPath != path) return@launch
             result.onSuccess { list ->
                 rawEntries = list
+                columnCache.clear()
                 // 展開中のツリー子要素も再取得して古い表示を残さない
                 for (key in expandedKeys.toList()) {
                     val entry = (list + childrenCache.values.flatten()).find { it.path.key == key }
                     if (entry != null) {
                         childrenCache[key] =
-                            runCatching { provider.list(entry.path).toList() }.getOrDefault(emptyList())
+                            runCatching { listPath(entry.path) }.getOrDefault(emptyList())
                     } else {
                         collapseRecursively(key)
                     }
@@ -260,6 +315,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = s.copy(
                     entries = visible,
                     listRows = buildTreeRows(visible, s.sort, s.showHidden),
+                    tagsByKey = loadTagsFor(visible),
                     selection = if (thenRenameKey != null) {
                         setOf(thenRenameKey)
                     } else {
@@ -276,7 +332,36 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun listPath(path: FsPath): List<FsEntry> = when (path.scheme) {
         TRASH_SCHEME -> trashManager.list()
         ArchivePaths.SCHEME -> listArchive(path)
-        else -> provider.list(path).toList()
+        TAG_SCHEME -> listTag(path)
+        else -> providerFor(path).list(path).toList()
+    }
+
+    /** タグ検索（SPEC §6.7: タグをタップでタグ検索）。実体が消えた行は掃除する */
+    private suspend fun listTag(path: FsPath): List<FsEntry> {
+        val tag = path.segments.firstOrNull() ?: return emptyList()
+        val result = mutableListOf<FsEntry>()
+        for (p in tagDao.pathsWithTag(tag)) {
+            val entry = runCatching {
+                providerFor(internalRoot).stat(LocalFileSystemProvider.fromAbsolutePath(p))
+            }.getOrNull()
+            if (entry == null) {
+                tagDao.removeAll(p)
+            } else {
+                result += entry
+            }
+        }
+        return result
+    }
+
+    /** 現在の一覧に対するタグを読み込む（ローカルのみ） */
+    private suspend fun loadTagsFor(entries: List<FsEntry>): Map<String, Set<String>> {
+        val locals = entries.filter { it.path.scheme == "file" }
+        if (locals.isEmpty()) return emptyMap()
+        val byPath = tagDao.forPaths(locals.map { it.path.displayPath() })
+            .groupBy({ it.path }, { it.tag })
+        return locals.mapNotNull { e ->
+            byPath[e.path.displayPath()]?.let { e.path.key to it.toSet() }
+        }.toMap()
     }
 
     /** アーカイブ内を仮想フォルダとして一覧する（SPEC §6.4, §8.1 data/fs/archive） */
@@ -318,10 +403,14 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             navDirection = direction,
             isTrash = path.scheme == TRASH_SCHEME,
             isArchive = path.scheme == ArchivePaths.SCHEME,
+            isNetwork = NetPaths.isNetwork(path),
+            searchActive = false,
+            searchQuery = "",
             canGoBack = backStack.isNotEmpty(),
             canGoForward = forwardStack.isNotEmpty(),
             quickLookIndex = null,
         )
+        searchJob?.cancel()
         loadJob = viewModelScope.launch {
             val result = runCatching { listPath(path) }
             // アーカイブがパスワード付きなら入力を求め、成功後に再読込する
@@ -335,19 +424,36 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 return@launch
             }
+            // ネットワーク接続のパスワード未保存・認証失敗は入力を求める（SPEC §7.2）
+            (result.exceptionOrNull() as? NetworkAuthException)?.let {
+                val connId = NetPaths.connectionId(path)
+                val name = connectionDao.byId(connId)?.name ?: path.name
+                _state.value = _state.value.copy(
+                    loading = false,
+                    netPasswordAsk = connId to name,
+                )
+                pendingNetOp = { load(path, NavDirection.JUMP) }
+                return@launch
+            }
+            (result.exceptionOrNull() as? HostKeyChangedException)?.let {
+                _state.value = _state.value.copy(loading = false, errorRes = R.string.hostkey_changed)
+                return@launch
+            }
             val free = if (path.scheme == "file") {
-                provider.freeSpace(path)
+                providerFor(path).freeSpace(path)
             } else {
-                provider.freeSpace(internalRoot)
+                providerFor(internalRoot).freeSpace(internalRoot)
             }
             result.fold(
                 onSuccess = { list ->
                     rawEntries = list
+                    columnCache.clear()
                     val s = _state.value
                     val visible = applyView(list, s.sort, s.showHidden)
                     _state.value = s.copy(
                         entries = visible,
                         listRows = buildTreeRows(visible, s.sort, s.showHidden),
+                        tagsByKey = loadTagsFor(visible),
                         loading = false,
                         freeSpaceBytes = free,
                     )
@@ -374,6 +480,12 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         if (s.renamingKey != null) return
         if (s.selectionMode) {
             toggleSelect(key)
+            return
+        }
+        // シングルタップで開く（SPEC §6.1, §10）
+        if (settings.value?.singleTapOpen == true) {
+            _state.value = s.copy(selection = setOf(key))
+            open(entry)
             return
         }
         if (key in s.selection) {
@@ -452,10 +564,39 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             entry.isDir && !_state.value.isTrash -> navigateTo(entry.path, NavDirection.FORWARD)
             entry.isDir -> _events.trySend(BrowserEvent.Message(R.string.trash_folder_preview))
             ArchivePaths.isArchivePath(entry.path) -> previewArchiveEntry(entry)
+            // ネットワーク上のファイルは一時ダウンロードしてから Quick Look（SPEC §7.3）
+            NetPaths.isNetwork(entry.path) -> previewNetworkEntry(entry)
             // アーカイブを開く＝既定は「同名フォルダに展開」（SPEC §6.4）
             entry.kind == EntryKind.ARCHIVE && !_state.value.isTrash ->
                 extractArchive(entry, wrapInFolder = true)
             else -> openQuickLook(entry)
+        }
+    }
+
+    /** ネットワークファイルをキャッシュへ落として Quick Look で開く（SPEC §7.3） */
+    private fun previewNetworkEntry(entry: FsEntry) {
+        viewModelScope.launch {
+            _events.trySend(BrowserEvent.Message(R.string.net_downloading))
+            runCatching { netPreviewCache.fetch(entry, registry) }
+                .fold(
+                    onSuccess = { cached ->
+                        val real = runCatching {
+                            providerFor(internalRoot)
+                                .stat(LocalFileSystemProvider.fromAbsolutePath(cached.absolutePath))
+                        }.getOrNull() ?: return@fold
+                        _state.value = _state.value.copy(
+                            quickLookFiles = listOf(real.copy(name = entry.name)),
+                            quickLookIndex = 0,
+                        )
+                    },
+                    onFailure = { e ->
+                        if (e is NetworkAuthException) {
+                            askNetPassword(entry.path) { previewNetworkEntry(entry) }
+                        } else {
+                            _events.trySend(BrowserEvent.Message(R.string.net_error))
+                        }
+                    },
+                )
         }
     }
 
@@ -468,6 +609,10 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         explicitEncoding: Boolean = false,
     ) {
         val s = _state.value
+        if (s.isNetwork) {
+            _events.trySend(BrowserEvent.Message(R.string.net_unsupported_op))
+            return
+        }
         if (s.isTrash || s.isArchive || anyBusy) return
         val archive = File(entry.path.displayPath())
         lastArchiveTarget = archive.absolutePath
@@ -508,6 +653,10 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun requestCompress() {
+        if (_state.value.isNetwork) {
+            _events.trySend(BrowserEvent.Message(R.string.net_unsupported_op))
+            return
+        }
         if (selectedEntries().isEmpty() || _state.value.isTrash || _state.value.isArchive) return
         _state.value = _state.value.copy(showCompressDialog = true)
     }
@@ -627,7 +776,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             }
             result.fold(
                 onSuccess = { cached ->
-                    val real = runCatching { provider.stat(LocalFileSystemProvider.fromAbsolutePath(cached.absolutePath)) }
+                    val real = runCatching { providerFor(internalRoot).stat(LocalFileSystemProvider.fromAbsolutePath(cached.absolutePath)) }
                         .getOrNull() ?: return@fold
                     _state.value = _state.value.copy(
                         quickLookFiles = listOf(real.copy(name = entry.name)),
@@ -720,7 +869,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                 isDir = true,
             )
             val path = _state.value.currentPath.child(name)
-            runCatching { provider.mkdir(path) }
+            runCatching { providerFor(path).mkdir(path) }
                 .onSuccess { refresh(thenRenameKey = path.key) }
                 .onFailure { _events.trySend(BrowserEvent.Message(R.string.op_failed)) }
         }
@@ -733,7 +882,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             val name = NameUtils.uniqueName(currentNames(), "$base.$extension", isDir = false)
             val path = _state.value.currentPath.child(name)
             runCatching {
-                withContext(Dispatchers.IO) { provider.openWrite(path, append = false).close() }
+                withContext(Dispatchers.IO) { providerFor(path).openWrite(path, append = false).close() }
             }
                 .onSuccess { refresh(thenRenameKey = path.key) }
                 .onFailure { _events.trySend(BrowserEvent.Message(R.string.op_failed)) }
@@ -774,7 +923,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val newPath = parent.child(newName)
-            runCatching { provider.rename(entry.path, newPath) }
+            runCatching { providerFor(entry.path).rename(entry.path, newPath) }
                 .onSuccess {
                     refresh()
                     _state.value = _state.value.copy(selection = setOf(newPath.key))
@@ -802,7 +951,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                 val siblings = namesIn(parent) - entry.name
                 val unique = NameUtils.uniqueName(siblings, desired, entry.isDir)
                 val newPath = parent.child(unique)
-                runCatching { provider.rename(entry.path, newPath) }.onFailure { failed++ }
+                runCatching { providerFor(entry.path).rename(entry.path, newPath) }.onFailure { failed++ }
             }
             exitSelectionMode()
             refresh()
@@ -877,6 +1026,10 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun duplicateSelected() {
         val selected = selectedEntries().filter { !it.isRestricted }
         val s = _state.value
+        if (s.isNetwork) {
+            _events.trySend(BrowserEvent.Message(R.string.net_unsupported_op))
+            return
+        }
         if (selected.isEmpty() || s.isTrash || s.isArchive || anyBusy) return
         TransferService.start(getApplication())
         transferManager.start(
@@ -949,7 +1102,8 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteSelected() {
         val selected = selectedEntries().filter { !it.isRestricted }
         if (selected.isEmpty() || _state.value.isArchive) return
-        if (_state.value.isTrash) {
+        // ゴミ箱内は完全削除、ネットワークはゴミ箱非対応のため即時削除を警告（SPEC §6.6）
+        if (_state.value.isTrash || _state.value.isNetwork) {
             _state.value = _state.value.copy(pendingDelete = PendingDelete(selected))
             return
         }
@@ -986,10 +1140,18 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         val pending = _state.value.pendingDelete ?: return
         _state.value = _state.value.copy(pendingDelete = null)
         viewModelScope.launch {
-            if (pending.emptyAll) {
-                trashManager.emptyTrash()
-            } else {
-                trashManager.deleteForever(pending.entries.mapNotNull { it.trashId })
+            when {
+                pending.emptyAll -> trashManager.emptyTrash()
+                // ネットワーク上はゴミ箱を経由せず削除（SPEC §6.6）
+                pending.entries.firstOrNull()?.let { NetPaths.isNetwork(it.path) } == true -> {
+                    var failed = 0
+                    for (entry in pending.entries) {
+                        runCatching { providerFor(entry.path).delete(entry.path, recursive = true) }
+                            .onFailure { failed++ }
+                    }
+                    if (failed > 0) _events.trySend(BrowserEvent.Message(R.string.op_failed))
+                }
+                else -> trashManager.deleteForever(pending.entries.mapNotNull { it.trashId })
             }
             exitSelectionMode()
             refresh()
@@ -1103,7 +1265,6 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     // --- 表示設定 ---
 
     fun setViewMode(mode: ViewMode) {
-        if (mode == ViewMode.COLUMN || mode == ViewMode.GALLERY) return // M5 で対応
         viewModelScope.launch { settingsRepo.setViewMode(mode) }
     }
 
@@ -1147,6 +1308,251 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun notify(@StringRes messageRes: Int) {
         _events.trySend(BrowserEvent.Message(messageRes))
+    }
+
+    // --- ネットワーク接続（SPEC §7.2） ---
+
+    fun requestAddConnection() {
+        _state.value = _state.value.copy(
+            editingConnection = ConnectionEntity(
+                name = "", protocol = NetProtocol.SMB.scheme, host = "",
+                port = NetProtocol.SMB.defaultPort, sharePath = "", username = "",
+                savePassword = true,
+            ),
+        )
+    }
+
+    fun requestEditConnection(connection: ConnectionEntity) {
+        _state.value = _state.value.copy(editingConnection = connection)
+    }
+
+    fun dismissConnectionDialog() {
+        _state.value = _state.value.copy(editingConnection = null)
+    }
+
+    fun saveConnection(connection: ConnectionEntity, password: String?) {
+        viewModelScope.launch {
+            val id = connectionDao.upsert(connection)
+            val connId = if (connection.id != 0L) connection.id else id
+            if (!password.isNullOrEmpty()) {
+                if (connection.savePassword) {
+                    credentialStore.setPassword(connId, password)
+                } else {
+                    credentialStore.setPassword(connId, null)
+                    container.sessionPasswords[connId] = password
+                }
+            }
+            registry.invalidateConnection(connId)
+            dismissConnectionDialog()
+            _events.trySend(BrowserEvent.Message(R.string.connection_saved))
+        }
+    }
+
+    fun deleteConnection(connection: ConnectionEntity) {
+        viewModelScope.launch {
+            connectionDao.delete(connection.id)
+            credentialStore.clear(connection.id)
+            container.sessionPasswords.remove(connection.id)
+            registry.invalidateConnection(connection.id)
+            dismissConnectionDialog()
+            if (NetPaths.connectionId(_state.value.currentPath) == connection.id) {
+                navigateTo(internalRoot, NavDirection.JUMP)
+            }
+        }
+    }
+
+    fun testConnection(connection: ConnectionEntity, password: String) {
+        viewModelScope.launch {
+            _events.trySend(BrowserEvent.Message(R.string.connection_testing))
+            val result = NetworkTester.test(connection, password, credentialStore)
+            _events.trySend(
+                BrowserEvent.Message(
+                    if (result.isSuccess) R.string.connection_test_ok else R.string.connection_test_ng,
+                ),
+            )
+        }
+    }
+
+    fun openConnection(connection: ConnectionEntity) {
+        // 平文 FTP は警告表示（SPEC §7.1）
+        if (connection.protocol == NetProtocol.FTP.scheme) {
+            _events.trySend(BrowserEvent.Message(R.string.ftp_plaintext_warning))
+        }
+        navigateTo(NetPaths.root(connection), NavDirection.FORWARD)
+    }
+
+    private fun askNetPassword(path: FsPath, retry: () -> Unit) {
+        val connId = NetPaths.connectionId(path)
+        viewModelScope.launch {
+            val name = connectionDao.byId(connId)?.name ?: "?"
+            pendingNetOp = retry
+            _state.value = _state.value.copy(netPasswordAsk = connId to name)
+        }
+    }
+
+    fun submitNetPassword(password: String) {
+        val ask = _state.value.netPasswordAsk ?: return
+        _state.value = _state.value.copy(netPasswordAsk = null)
+        viewModelScope.launch {
+            val conn = connectionDao.byId(ask.first)
+            container.sessionPasswords[ask.first] = password
+            if (conn?.savePassword == true) {
+                credentialStore.setPassword(ask.first, password)
+            }
+            pendingNetOp?.invoke()
+        }
+    }
+
+    fun cancelNetPassword() {
+        _state.value = _state.value.copy(netPasswordAsk = null)
+        pendingNetOp = null
+        if (_state.value.isNetwork) {
+            navigateTo(internalRoot, NavDirection.BACKWARD)
+        }
+    }
+
+    // --- タグ（SPEC §6.3: 7色。ユーザー定義色は今後） ---
+
+    fun toggleTag(entry: FsEntry, tag: String) {
+        if (entry.path.scheme != "file") {
+            _events.trySend(BrowserEvent.Message(R.string.tag_local_only))
+            return
+        }
+        viewModelScope.launch {
+            val path = entry.path.displayPath()
+            val current = _state.value.tagsByKey[entry.path.key] ?: emptySet()
+            if (tag in current) {
+                tagDao.remove(path, tag)
+            } else {
+                tagDao.add(EntryTagEntity(path, tag))
+            }
+            val s = _state.value
+            _state.value = s.copy(tagsByKey = loadTagsFor(s.entries + s.listRows.map { it.entry }))
+        }
+    }
+
+    // --- 検索（SPEC §6.7: インクリメンタル。M5） ---
+
+    fun enterSearch() {
+        if (_state.value.isTrash || _state.value.isArchive || _state.value.isNetwork) {
+            _events.trySend(BrowserEvent.Message(R.string.search_local_only))
+            return
+        }
+        _state.value = _state.value.copy(searchActive = true, searchQuery = "")
+    }
+
+    fun exitSearch() {
+        searchJob?.cancel()
+        _state.value = _state.value.copy(searchActive = false, searchQuery = "", searching = false)
+        refresh()
+    }
+
+    fun setSearchGlobal(global: Boolean) {
+        _state.value = _state.value.copy(searchGlobal = global)
+        setSearchQuery(_state.value.searchQuery)
+    }
+
+    fun setSearchQuery(query: String) {
+        _state.value = _state.value.copy(searchQuery = query)
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _state.value = _state.value.copy(searching = false)
+            refresh()
+            return
+        }
+        val root = if (_state.value.searchGlobal) internalRoot else _state.value.currentPath
+        searchJob = viewModelScope.launch {
+            delay(300) // 入力のデバウンス
+            _state.value = _state.value.copy(searching = true)
+            val results = mutableListOf<FsEntry>()
+            withContext(Dispatchers.IO) {
+                val rootFile = File(root.displayPath())
+                var emitted = 0
+                for (f in rootFile.walkTopDown()
+                    .onEnter { !it.name.startsWith(".") && it.name != TrashManagerDirName }
+                ) {
+                    if (!kotlinx.coroutines.currentCoroutineContext().isActive) break
+                    if (f == rootFile) continue
+                    if (!f.name.contains(query, ignoreCase = true)) continue
+                    val entry = runCatching {
+                        providerFor(internalRoot)
+                            .stat(LocalFileSystemProvider.fromAbsolutePath(f.absolutePath))
+                    }.getOrNull() ?: continue
+                    results += entry
+                    emitted++
+                    if (emitted % 30 == 0) {
+                        val snapshot = results.toList()
+                        withContext(Dispatchers.Main) { publishSearchResults(snapshot, done = false) }
+                    }
+                    if (emitted >= SEARCH_LIMIT) break
+                }
+            }
+            publishSearchResults(results, done = true)
+        }
+    }
+
+    private suspend fun publishSearchResults(results: List<FsEntry>, done: Boolean) {
+        val s = _state.value
+        if (!s.searchActive) return
+        val visible = applyView(results, s.sort, s.showHidden)
+        _state.value = s.copy(
+            entries = visible,
+            listRows = visible.map { TreeRow(it, 0, expanded = false) },
+            tagsByKey = loadTagsFor(visible),
+            searching = !done,
+            loading = false,
+            errorRes = null,
+        )
+    }
+
+    // --- カラム / ギャラリー表示（SPEC §4.4。M5） ---
+
+    /** カラム表示の各列の一覧（キャッシュ付き） */
+    suspend fun loadChildren(path: FsPath): List<FsEntry> {
+        columnCache[path.key]?.let { return it }
+        val s = _state.value
+        val listed = runCatching { listPath(path) }.getOrDefault(emptyList())
+        val visible = applyView(listed, s.sort, s.showHidden)
+        columnCache[path.key] = visible
+        return visible
+    }
+
+    // --- 設定（SPEC §10。M6） ---
+
+    fun showSettings() {
+        _state.value = _state.value.copy(showSettings = true)
+    }
+
+    fun dismissSettings() {
+        _state.value = _state.value.copy(showSettings = false)
+    }
+
+    fun setSingleTapOpen(value: Boolean) {
+        viewModelScope.launch { settingsRepo.setSingleTapOpen(value) }
+    }
+
+    fun setDynamicColor(value: Boolean) {
+        viewModelScope.launch { settingsRepo.setDynamicColor(value) }
+    }
+
+    fun setBiometricLock(value: Boolean) {
+        viewModelScope.launch { settingsRepo.setBiometricLock(value) }
+    }
+
+    fun setTrashAutoDays(days: Int) {
+        viewModelScope.launch { settingsRepo.setTrashAutoDays(days) }
+    }
+
+    fun clearCaches() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val cacheDir = getApplication<Application>().cacheDir
+                listOf("thumbnails", "net-preview", "archive-preview").forEach {
+                    File(cacheDir, it).deleteRecursively()
+                }
+            }
+            _events.trySend(BrowserEvent.Message(R.string.cache_cleared))
+        }
     }
 
     // --- 内部ヘルパー ---
@@ -1196,7 +1602,16 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val HISTORY_LIMIT = 50
+        private const val SEARCH_LIMIT = 500
         const val TRASH_SCHEME = "trash"
+        const val TAG_SCHEME = "tag"
         val TRASH_PATH = FsPath(TRASH_SCHEME, emptyList())
+        private val TrashManagerDirName =
+            io.github.hatake716.dango.data.fs.trash.TrashManager.TRASH_DIR_NAME
+
+        /** SPEC §9 のタグ7色（id はサイドバー・DB のキー） */
+        val TAG_COLORS = listOf("red", "orange", "yellow", "green", "blue", "purple", "gray")
+
+        fun tagPath(color: String) = FsPath(TAG_SCHEME, listOf(color))
     }
 }

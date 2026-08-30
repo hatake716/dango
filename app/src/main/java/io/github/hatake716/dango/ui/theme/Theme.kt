@@ -125,10 +125,24 @@ private fun animatedDangoColors(target: DangoColors): DangoColors {
 @Composable
 fun DangoTheme(
     themeMode: ThemeMode,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val dark = isDarkTheme(themeMode)
-    val colors = animatedDangoColors(if (dark) DarkDangoColors else LightDangoColors)
+    // Material You 動的カラー（SPEC §9: 既定オフ。有効時はアクセントのみ端末カラーに追従）
+    val base = if (dark) DarkDangoColors else LightDangoColors
+    val target = if (dynamicColor && android.os.Build.VERSION.SDK_INT >= 31) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val dynamic = if (dark) {
+            androidx.compose.material3.dynamicDarkColorScheme(context)
+        } else {
+            androidx.compose.material3.dynamicLightColorScheme(context)
+        }
+        base.copy(accent = dynamic.primary, selectionFocused = dynamic.primary)
+    } else {
+        base
+    }
+    val colors = animatedDangoColors(target)
     val scheme = if (dark) {
         darkColorScheme(
             primary = colors.selectionFocused,

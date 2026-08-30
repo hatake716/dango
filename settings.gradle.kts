@@ -17,6 +17,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // sardine-android (WebDAV) は JitPack のみで配布されている
+        maven("https://jitpack.io") {
+            content { includeGroup("com.github.thegrizzlylabs") }
+        }
     }
 }
 

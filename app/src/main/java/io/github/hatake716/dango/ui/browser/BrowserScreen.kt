@@ -72,6 +72,9 @@ import io.github.hatake716.dango.domain.model.ThemeMode
 import io.github.hatake716.dango.domain.model.ViewMode
 import io.github.hatake716.dango.ui.browser.components.ArchivePasswordDialog
 import io.github.hatake716.dango.ui.browser.components.BackgroundContextMenuContent
+import io.github.hatake716.dango.ui.browser.components.ConnectionDialog
+import io.github.hatake716.dango.ui.browser.components.NetPasswordDialog
+import io.github.hatake716.dango.ui.browser.components.SettingsSheet
 import io.github.hatake716.dango.ui.browser.components.BatchRenameDialog
 import io.github.hatake716.dango.ui.browser.components.BottomActionBar
 import io.github.hatake716.dango.ui.browser.components.ClipboardBar
@@ -105,6 +108,7 @@ fun BrowserScreen(
     val settings = viewModel.settings.collectAsState().value ?: Settings()
     val transfer by viewModel.transferProgress.collectAsState()
     val conflict by viewModel.conflictRequest.collectAsState()
+    val connections by viewModel.connections.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var sidebarOpen by remember { mutableStateOf(false) }
@@ -202,6 +206,12 @@ fun BrowserScreen(
                             onNavigate = { viewModel.navigateTo(it) },
                             modifier = Modifier.width(220.dp),
                             onDropKeys = onSidebarDrop,
+                            connections = connections,
+                            onOpenConnection = viewModel::openConnection,
+                            onEditConnection = viewModel::requestEditConnection,
+                            onAddConnection = viewModel::requestAddConnection,
+                            tagColors = viewModel.tagColors,
+                            onOpenTag = { viewModel.navigateTo(BrowserViewModel.tagPath(it)) },
                         )
                         VerticalDivider(color = colors.divider, modifier = Modifier.fillMaxHeight())
                     }
@@ -269,6 +279,18 @@ fun BrowserScreen(
                         modifier = Modifier.width(268.dp),
                         onDropKeys = { item, keys ->
                             onSidebarDrop(item, keys)
+                            sidebarOpen = false
+                        },
+                        connections = connections,
+                        onOpenConnection = {
+                            viewModel.openConnection(it)
+                            sidebarOpen = false
+                        },
+                        onEditConnection = viewModel::requestEditConnection,
+                        onAddConnection = viewModel::requestAddConnection,
+                        tagColors = viewModel.tagColors,
+                        onOpenTag = {
+                            viewModel.navigateTo(BrowserViewModel.tagPath(it))
                             sidebarOpen = false
                         },
                     )
@@ -375,6 +397,37 @@ fun BrowserScreen(
             onCancel = viewModel::cancelArchivePassword,
         )
     }
+
+    state.editingConnection?.let { connection ->
+        ConnectionDialog(
+            initial = connection,
+            onSave = viewModel::saveConnection,
+            onTest = viewModel::testConnection,
+            onDelete = viewModel::deleteConnection,
+            onDismiss = viewModel::dismissConnectionDialog,
+        )
+    }
+
+    state.netPasswordAsk?.let { (_, name) ->
+        NetPasswordDialog(
+            connectionName = name,
+            onSubmit = viewModel::submitNetPassword,
+            onCancel = viewModel::cancelNetPassword,
+        )
+    }
+
+    if (state.showSettings) {
+        SettingsSheet(
+            settings = settings,
+            onSetThemeMode = viewModel::setThemeMode,
+            onSetDynamicColor = viewModel::setDynamicColor,
+            onSetSingleTap = viewModel::setSingleTapOpen,
+            onSetTrashDays = viewModel::setTrashAutoDays,
+            onClearCache = viewModel::clearCaches,
+            onSetBiometric = viewModel::setBiometricLock,
+            onDismiss = viewModel::dismissSettings,
+        )
+    }
 }
 
 @Composable
@@ -428,6 +481,7 @@ private fun MainPane(
             onDelete = viewModel::deleteSelected,
             onRestore = viewModel::restoreSelected,
             onInfo = viewModel::showInfo,
+            onToggleTag = viewModel::toggleTag,
             dismiss = { contextMenuKey = null },
         )
     }
@@ -450,6 +504,7 @@ private fun MainPane(
                 entry = entry,
                 isTrash = state.isTrash,
                 isArchiveBrowse = state.isArchive,
+                entryTags = state.tagsByKey[entry.path.key] ?: emptySet(),
                 actions = menuActions,
             )
         },
@@ -511,6 +566,14 @@ private fun MainPane(
                     viewModel.paste()
                 },
                 onEmptyTrash = viewModel::requestEmptyTrash,
+                searchActive = state.searchActive,
+                searchQuery = state.searchQuery,
+                searchGlobal = state.searchGlobal,
+                onEnterSearch = viewModel::enterSearch,
+                onExitSearch = viewModel::exitSearch,
+                onSearchQuery = viewModel::setSearchQuery,
+                onToggleSearchGlobal = { viewModel.setSearchGlobal(!state.searchGlobal) },
+                onOpenSettings = viewModel::showSettings,
             )
             HorizontalDivider(color = colors.divider)
             if (!hasFullAccess) {
@@ -591,6 +654,7 @@ private fun MainPane(
                 onRestore = viewModel::restoreSelected,
             )
             HorizontalDivider(color = colors.divider)
+            val connectionsForLabel by viewModel.connections.collectAsState()
             PathBar(
                 currentPath = state.currentPath,
                 internalRoot = viewModel.internalRoot,
@@ -600,6 +664,7 @@ private fun MainPane(
                     onEnsureNotifPermission()
                     viewModel.moveByDrag(keys, path)
                 },
+                connectionLabel = { id -> connectionsForLabel.find { it.id == id }?.name },
             )
             HorizontalDivider(color = colors.divider)
             StatusBar(
@@ -626,6 +691,36 @@ private fun ContentArea(
     hooks: EntryItemHooks,
 ) {
     val colors = DangoTheme.colors
+    // カラム表示は自前の横スクロールを持つため、ズームアニメーションの外で描画する（SPEC §4.4）
+    if (state.viewMode == ViewMode.COLUMN && !state.searchActive) {
+        val base = remember(state.currentPath) {
+            when {
+                io.github.hatake716.dango.data.net.NetPaths.isNetwork(state.currentPath) ->
+                    io.github.hatake716.dango.domain.model.FsPath(
+                        state.currentPath.scheme,
+                        state.currentPath.segments.take(1),
+                    )
+                state.currentPath.scheme == io.github.hatake716.dango.data.archive.ArchivePaths.SCHEME ->
+                    io.github.hatake716.dango.domain.model.FsPath(
+                        state.currentPath.scheme,
+                        state.currentPath.segments.take(1),
+                    )
+                state.currentPath.scheme == "file" &&
+                    state.currentPath.isDescendantOf(viewModel.internalRoot) -> viewModel.internalRoot
+                else -> state.currentPath
+            }
+        }
+        io.github.hatake716.dango.ui.browser.components.ColumnView(
+            basePath = base,
+            currentPath = state.currentPath,
+            selection = state.selection,
+            loadChildren = viewModel::loadChildren,
+            onNavigate = { viewModel.navigateTo(it) },
+            onTapFile = viewModel::onEntryTap,
+            onDoubleTapFile = viewModel::onEntryDoubleTap,
+        )
+        return
+    }
     // フォルダを開く/戻るのズームアニメーション（SPEC §5: 200ms, EaseOutCubic。
     // 新は 0.96→1.0 で拡大フェードイン、旧は縮小フェードアウト。戻るは逆再生＝同一の対称形）
     AnimatedContent(
@@ -676,6 +771,15 @@ private fun ContentArea(
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
+                paneState.viewMode == ViewMode.GALLERY -> {
+                    io.github.hatake716.dango.ui.browser.components.GalleryView(
+                        entries = paneState.entries,
+                        selection = paneState.selection,
+                        onTap = viewModel::onEntryTap,
+                        onDoubleTap = viewModel::onEntryDoubleTap,
+                        onLongPress = viewModel::onEntryLongPress,
+                    )
+                }
                 paneState.viewMode == ViewMode.LIST -> {
                     FileListView(
                         rows = paneState.listRows,
@@ -683,6 +787,7 @@ private fun ContentArea(
                         sort = paneState.sort,
                         renamingKey = paneState.renamingKey,
                         pastedKeys = paneState.pastedKeys,
+                        tagsByKey = paneState.tagsByKey,
                         hooks = hooks,
                         onTap = viewModel::onEntryTap,
                         onDoubleTap = viewModel::onEntryDoubleTap,
@@ -701,6 +806,7 @@ private fun ContentArea(
                         iconSizeDp = paneState.iconSizeDp,
                         renamingKey = paneState.renamingKey,
                         pastedKeys = paneState.pastedKeys,
+                        tagsByKey = paneState.tagsByKey,
                         hooks = hooks,
                         onTap = viewModel::onEntryTap,
                         onDoubleTap = viewModel::onEntryDoubleTap,

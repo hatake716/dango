@@ -16,6 +16,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -35,6 +37,30 @@ import io.github.hatake716.dango.ui.browser.BrowserViewModel
 import io.github.hatake716.dango.ui.browser.OnboardingScreen
 import io.github.hatake716.dango.ui.theme.DangoTheme
 import io.github.hatake716.dango.ui.theme.isDarkTheme
+
+/** 生体認証ロック画面（SPEC §10。認証は端末の BiometricPrompt に委ねる） */
+@androidx.compose.runtime.Composable
+private fun LockScreen(onUnlock: () -> Unit) {
+    val colors = DangoTheme.colors
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.windowBackground),
+        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+    ) {
+        androidx.compose.material3.Text(text = "🍡", fontSize = androidx.compose.ui.unit.TextUnit(48f, androidx.compose.ui.unit.TextUnitType.Sp))
+        androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
+        androidx.compose.material3.Text(
+            text = androidx.compose.ui.res.stringResource(R.string.lock_title),
+            color = colors.textPrimary,
+        )
+        androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+        androidx.compose.material3.Button(onClick = onUnlock) {
+            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.lock_unlock))
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -81,7 +107,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            DangoTheme(themeMode = themeMode) {
+            // 起動時の生体認証ロック（SPEC §10 安全）
+            var unlocked by rememberSaveable { mutableStateOf(false) }
+            val needsLock = settings?.biometricLock == true && !unlocked
+            LaunchedEffect(needsLock) {
+                if (needsLock) showBiometricPrompt { unlocked = true }
+            }
+
+            DangoTheme(
+                themeMode = themeMode,
+                dynamicColor = settings?.dynamicColor == true,
+            ) {
                 when {
                     settings == null -> {
                         Box(
@@ -89,6 +125,9 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .background(DangoTheme.colors.windowBackground),
                         )
+                    }
+                    needsLock -> {
+                        LockScreen(onUnlock = { showBiometricPrompt { unlocked = true } })
                     }
                     !hasFullAccess && !settings.onboardingDone -> {
                         OnboardingScreen(
@@ -121,6 +160,29 @@ class MainActivity : ComponentActivity() {
         } else {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+
+    /** 端末の BiometricPrompt（生体認証＋画面ロック資格情報）。SPEC §10 */
+    private fun showBiometricPrompt(onSuccess: () -> Unit) {
+        val prompt = android.hardware.biometrics.BiometricPrompt.Builder(this)
+            .setTitle(getString(R.string.lock_prompt_title))
+            .setSubtitle(getString(R.string.lock_prompt_subtitle))
+            .setAllowedAuthenticators(
+                android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                    android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+            )
+            .build()
+        prompt.authenticate(
+            android.os.CancellationSignal(),
+            mainExecutor,
+            object : android.hardware.biometrics.BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(
+                    result: android.hardware.biometrics.BiometricPrompt.AuthenticationResult?,
+                ) {
+                    onSuccess()
+                }
+            },
+        )
+    }
 
     private fun openFullAccessSettings() {
         try {

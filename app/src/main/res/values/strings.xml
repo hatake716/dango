@@ -247,4 +247,75 @@
 
     <!-- ドラッグ&ドロップ -->
     <string name="drag_moved">移動しました</string>
+
+    <!-- ネットワーク（M4。SPEC §7） -->
+    <string name="sidebar_network">ネットワーク</string>
+    <string name="net_add_connection">接続を追加…</string>
+    <string name="net_downloading">ダウンロード中…</string>
+    <string name="net_error">ネットワークエラーが発生しました</string>
+    <string name="net_unsupported_op">ネットワークドライブ上では未対応の操作です</string>
+    <string name="hostkey_changed">サーバのホスト鍵が以前と異なります。安全のため接続を中止しました（接続を作り直すと新しい鍵を信頼します）</string>
+    <string name="connection_saved">接続を保存しました</string>
+    <string name="connection_testing">接続をテスト中…</string>
+    <string name="connection_test_ok">接続に成功しました</string>
+    <string name="connection_test_ng">接続に失敗しました</string>
+    <string name="ftp_plaintext_warning">FTP は暗号化されていません。パスワードと内容が平文で送信されます</string>
+    <string name="conn_name">表示名</string>
+    <string name="conn_protocol">プロトコル</string>
+    <string name="conn_host">ホスト（WebDAV は URL 可）</string>
+    <string name="conn_port">ポート</string>
+    <string name="conn_share">共有名 / パス</string>
+    <string name="conn_username">ユーザー名</string>
+    <string name="conn_password">パスワード</string>
+    <string name="conn_save_password">パスワードを保存する</string>
+    <string name="conn_test">テスト</string>
+    <string name="conn_save">保存</string>
+    <string name="conn_delete">この接続を削除</string>
+    <string name="net_password_body">「%1$s」に接続するにはパスワードが必要です。</string>
+
+    <!-- 検索（M5。SPEC §6.7） -->
+    <string name="cd_search">検索</string>
+    <string name="search_hint">名前で検索…</string>
+    <string name="search_scope_folder">このフォルダ</string>
+    <string name="search_scope_device">デバイス全体</string>
+    <string name="search_local_only">検索はローカルフォルダでのみ使えます</string>
+    <string name="search_searching">検索中…</string>
+
+    <!-- タグ（M5。SPEC §6.3） -->
+    <string name="sidebar_tags">タグ</string>
+    <string name="ctx_tags">タグ</string>
+    <string name="tag_local_only">タグは内部ストレージのファイルにのみ付けられます</string>
+    <string name="tag_red">レッド</string>
+    <string name="tag_orange">オレンジ</string>
+    <string name="tag_yellow">イエロー</string>
+    <string name="tag_green">グリーン</string>
+    <string name="tag_blue">ブルー</string>
+    <string name="tag_purple">パープル</string>
+    <string name="tag_gray">グレイ</string>
+
+    <!-- 設定（M6。SPEC §10） -->
+    <string name="menu_settings">設定…</string>
+    <string name="settings_title">設定</string>
+    <string name="settings_appearance">外観</string>
+    <string name="settings_behavior">動作</string>
+    <string name="settings_storage">ストレージ</string>
+    <string name="settings_security">安全</string>
+    <string name="settings_dynamic_color">Material You 動的カラー</string>
+    <string name="settings_dynamic_color_desc">アクセント色を端末のテーマに合わせる</string>
+    <string name="settings_single_tap">シングルタップで開く</string>
+    <string name="settings_single_tap_desc">タップで選択せず、すぐに開く</string>
+    <string name="settings_trash_days">ゴミ箱の自動削除</string>
+    <string name="settings_trash_days_value">%1$d 日</string>
+    <string name="settings_clear_cache">キャッシュを消去</string>
+    <string name="settings_clear_cache_desc">サムネイル・プレビューの一時ファイルを削除する</string>
+    <string name="settings_biometric">起動時に生体認証でロック</string>
+    <string name="settings_biometric_desc">ネットワーク接続情報の保護のため</string>
+    <string name="settings_version">バージョン</string>
+    <string name="cache_cleared">キャッシュを消去しました</string>
+
+    <!-- 生体認証ロック -->
+    <string name="lock_title">dango はロックされています</string>
+    <string name="lock_unlock">ロック解除</string>
+    <string name="lock_prompt_title">ロック解除</string>
+    <string name="lock_prompt_subtitle">生体認証または画面ロックで認証してください</string>
 </resources>

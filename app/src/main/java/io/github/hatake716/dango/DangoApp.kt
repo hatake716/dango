@@ -14,6 +14,12 @@ import coil3.svg.SvgDecoder
 import coil3.video.VideoFrameDecoder
 import io.github.hatake716.dango.data.archive.ArchiveManager
 import io.github.hatake716.dango.data.db.DangoDatabase
+import io.github.hatake716.dango.data.fs.ProviderRegistry
+import io.github.hatake716.dango.data.net.CredentialStore
+import io.github.hatake716.dango.data.net.NetPreviewCache
+import io.github.hatake716.dango.data.net.NetProtocol
+import io.github.hatake716.dango.data.net.NetworkDeps
+import io.github.hatake716.dango.data.net.NetworkProvider
 import io.github.hatake716.dango.data.fs.FileSystemProvider
 import io.github.hatake716.dango.data.fs.local.LocalFileSystemProvider
 import io.github.hatake716.dango.data.fs.trash.TrashManager
@@ -34,7 +40,17 @@ class AppContainer(context: Context) {
         internalRootPath = Environment.getExternalStorageDirectory().absolutePath,
         dao = database.trashDao(),
     )
-    val transferManager = TransferManager()
+    val credentialStore = CredentialStore(context)
+    val sessionPasswords = mutableMapOf<Long, String>()
+    private val networkDeps = NetworkDeps(database.connectionDao(), credentialStore, sessionPasswords)
+    val providerRegistry = ProviderRegistry(
+        local = fileSystemProvider,
+        network = NetProtocol.entries.associate { protocol ->
+            protocol.scheme to NetworkProvider(protocol, networkDeps)
+        },
+    )
+    val netPreviewCache = NetPreviewCache(context.cacheDir)
+    val transferManager = TransferManager(providerRegistry)
     val archiveManager = ArchiveManager(context.cacheDir)
     val textFileStore = TextFileStore()
     val infoLoader = InfoLoader()
@@ -47,6 +63,14 @@ class DangoApp : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // sshj（SFTP）が要求する BouncyCastle を Android 同梱の縮小版から差し替える
+        runCatching {
+            java.security.Security.removeProvider("BC")
+            java.security.Security.insertProviderAt(
+                org.bouncycastle.jce.provider.BouncyCastleProvider(),
+                1,
+            )
+        }
         container = AppContainer(this)
     }
 

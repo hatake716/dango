@@ -46,12 +46,36 @@ interface TrashDao {
     suspend fun deleteAll()
 }
 
-@Database(entities = [TrashEntryEntity::class], version = 1, exportSchema = false)
+@Database(
+    entities = [TrashEntryEntity::class, ConnectionEntity::class, EntryTagEntity::class],
+    version = 2,
+    exportSchema = false,
+)
 abstract class DangoDatabase : RoomDatabase() {
     abstract fun trashDao(): TrashDao
+    abstract fun connectionDao(): ConnectionDao
+    abstract fun entryTagDao(): EntryTagDao
 
     companion object {
+        private val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `connections` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `protocol` TEXT NOT NULL, `host` TEXT NOT NULL, " +
+                        "`port` INTEGER NOT NULL, `sharePath` TEXT NOT NULL, " +
+                        "`username` TEXT NOT NULL, `savePassword` INTEGER NOT NULL)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `entry_tags` (" +
+                        "`path` TEXT NOT NULL, `tag` TEXT NOT NULL, PRIMARY KEY(`path`, `tag`))",
+                )
+            }
+        }
+
         fun build(context: Context): DangoDatabase =
-            Room.databaseBuilder(context, DangoDatabase::class.java, "dango.db").build()
+            Room.databaseBuilder(context, DangoDatabase::class.java, "dango.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }

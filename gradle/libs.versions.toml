@@ -17,6 +17,13 @@ xz = "1.10"
 zstdJni = "1.5.6-6"
 zip4j = "2.11.5"
 junrar = "7.5.5"
+smbj = "0.13.0"
+sshj = "0.38.0"
+bouncycastle = "1.78.1"
+sardine = "0.9"
+commonsNet = "3.11.1"
+securityCrypto = "1.1.0-alpha06"
+biometric = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -48,6 +55,13 @@ xz = { group = "org.tukaani", name = "xz", version.ref = "xz" }
 zstd-jni = { group = "com.github.luben", name = "zstd-jni", version.ref = "zstdJni" }
 zip4j = { group = "net.lingala.zip4j", name = "zip4j", version.ref = "zip4j" }
 junrar = { group = "com.github.junrar", name = "junrar", version.ref = "junrar" }
+smbj = { group = "com.hierynomus", name = "smbj", version.ref = "smbj" }
+sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
+bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
+sardine-android = { group = "com.github.thegrizzlylabs", name = "sardine-android", version.ref = "sardine" }
+commons-net = { group = "commons-net", name = "commons-net", version.ref = "commonsNet" }
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

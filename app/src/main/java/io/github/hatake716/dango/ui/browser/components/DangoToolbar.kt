@@ -1,6 +1,7 @@
 package io.github.hatake716.dango.ui.browser.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,18 +26,27 @@ import androidx.compose.material.icons.outlined.GridView
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.NoteAdd
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material.icons.outlined.ViewSidebar
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -88,6 +98,14 @@ fun DangoToolbar(
     onNewTextFile: (String) -> Unit,
     onPaste: () -> Unit,
     onEmptyTrash: () -> Unit,
+    searchActive: Boolean = false,
+    searchQuery: String = "",
+    searchGlobal: Boolean = false,
+    onEnterSearch: () -> Unit = {},
+    onExitSearch: () -> Unit = {},
+    onSearchQuery: (String) -> Unit = {},
+    onToggleSearchGlobal: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
 ) {
     val colors = DangoTheme.colors
     Row(
@@ -99,7 +117,52 @@ fun DangoToolbar(
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (selectionMode) {
+        if (searchActive) {
+            // 検索モード（SPEC §6.7: 現在フォルダ/デバイス全体のトグル付き）
+            ToolbarIconButton(
+                icon = Icons.Outlined.Close,
+                contentDescription = stringResource(R.string.cancel),
+                onClick = onExitSearch,
+            )
+            val focusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+            BasicTextField(
+                value = searchQuery,
+                onValueChange = onSearchQuery,
+                textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp),
+                cursorBrush = SolidColor(colors.selectionFocused),
+                singleLine = true,
+                decorationBox = { inner ->
+                    Box {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                stringResource(R.string.search_hint),
+                                color = colors.textSecondary,
+                                fontSize = 14.sp,
+                            )
+                        }
+                        inner()
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 6.dp)
+                    .focusRequester(focusRequester),
+            )
+            FilterChip(
+                selected = searchGlobal,
+                onClick = onToggleSearchGlobal,
+                label = {
+                    Text(
+                        stringResource(
+                            if (searchGlobal) R.string.search_scope_device else R.string.search_scope_folder,
+                        ),
+                        fontSize = 11.sp,
+                    )
+                },
+                modifier = Modifier.padding(end = 4.dp),
+            )
+        } else if (selectionMode) {
             ToolbarIconButton(
                 icon = Icons.Outlined.Close,
                 contentDescription = stringResource(R.string.cd_exit_selection),
@@ -155,8 +218,13 @@ fun DangoToolbar(
             )
             ViewModeButton(ViewMode.ICON, Icons.Outlined.GridView, R.string.cd_view_icon, viewMode, onSetViewMode)
             ViewModeButton(ViewMode.LIST, Icons.AutoMirrored.Outlined.ViewList, R.string.cd_view_list, viewMode, onSetViewMode)
-            ViewModeButton(ViewMode.COLUMN, Icons.Outlined.ViewColumn, R.string.cd_view_column, viewMode, onSetViewMode, enabled = false)
-            ViewModeButton(ViewMode.GALLERY, Icons.Outlined.Collections, R.string.cd_view_gallery, viewMode, onSetViewMode, enabled = false)
+            ViewModeButton(ViewMode.COLUMN, Icons.Outlined.ViewColumn, R.string.cd_view_column, viewMode, onSetViewMode)
+            ViewModeButton(ViewMode.GALLERY, Icons.Outlined.Collections, R.string.cd_view_gallery, viewMode, onSetViewMode)
+            ToolbarIconButton(
+                icon = Icons.Outlined.Search,
+                contentDescription = stringResource(R.string.cd_search),
+                onClick = onEnterSearch,
+            )
             SortMenuButton(sort, onSetSortKey, onToggleFoldersFirst)
             OverflowMenuButton(
                 showHidden = showHidden,
@@ -171,6 +239,7 @@ fun DangoToolbar(
                 onNewTextFile = onNewTextFile,
                 onPaste = onPaste,
                 onEmptyTrash = onEmptyTrash,
+                onOpenSettings = onOpenSettings,
             )
         }
     }
@@ -310,6 +379,7 @@ private fun OverflowMenuButton(
     onNewTextFile: (String) -> Unit,
     onPaste: () -> Unit,
     onEmptyTrash: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val colors = DangoTheme.colors
     var expanded by remember { mutableStateOf(false) }
@@ -415,6 +485,14 @@ private fun OverflowMenuButton(
                 onReload()
             },
             leadingIcon = { Icon(Icons.Outlined.Refresh, null, modifier = Modifier.size(16.dp)) },
+        )
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.menu_settings)) },
+            onClick = {
+                expanded = false
+                onOpenSettings()
+            },
+            leadingIcon = { Icon(Icons.Outlined.Settings, null, modifier = Modifier.size(16.dp)) },
         )
     }
 }

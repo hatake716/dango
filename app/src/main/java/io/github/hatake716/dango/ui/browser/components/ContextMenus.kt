@@ -1,11 +1,23 @@
 package io.github.hatake716.dango.ui.browser.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.R
 import io.github.hatake716.dango.domain.model.EntryKind
 import io.github.hatake716.dango.domain.model.FsEntry
@@ -29,6 +41,7 @@ class EntryMenuActions(
     val onDelete: () -> Unit,
     val onRestore: () -> Unit,
     val onInfo: (FsEntry) -> Unit,
+    val onToggleTag: (FsEntry, String) -> Unit,
     val dismiss: () -> Unit,
 )
 
@@ -49,6 +62,7 @@ fun ColumnScope.EntryContextMenuContent(
     entry: FsEntry,
     isTrash: Boolean,
     isArchiveBrowse: Boolean,
+    entryTags: Set<String>,
     actions: EntryMenuActions,
 ) {
     val colors = DangoTheme.colors
@@ -90,6 +104,36 @@ fun ColumnScope.EntryContextMenuContent(
             HorizontalDivider(color = colors.divider)
             MenuItem(R.string.ctx_move_to_trash, d) { actions.onDelete() }
             HorizontalDivider(color = colors.divider)
+            // タグ（SPEC §6.3: 7色。タップでトグル）
+            if (entry.path.scheme == "file") {
+                Text(
+                    text = stringResource(R.string.ctx_tags),
+                    color = colors.textSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                )
+                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    TAG_COLOR_VALUES.forEach { (tag, color) ->
+                        val active = tag in entryTags
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 3.dp)
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(if (active) color else color.copy(alpha = 0.3f))
+                                .then(
+                                    if (active) {
+                                        Modifier.border(2.dp, colors.textPrimary.copy(alpha = 0.5f), CircleShape)
+                                    } else {
+                                        Modifier
+                                    },
+                                )
+                                .clickable { actions.onToggleTag(entry, tag) },
+                        )
+                    }
+                }
+                HorizontalDivider(color = colors.divider)
+            }
             MenuItem(R.string.act_info, d) { actions.onInfo(entry) }
         }
     }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +59,7 @@ fun IconGridView(
     iconSizeDp: Int,
     renamingKey: String?,
     pastedKeys: Set<String>,
+    tagsByKey: Map<String, Set<String>>,
     hooks: EntryItemHooks,
     onTap: (FsEntry) -> Unit,
     onDoubleTap: (FsEntry) -> Unit,
@@ -95,6 +97,7 @@ fun IconGridView(
                 iconSizeDp = iconSizeDp,
                 renaming = entry.path.key == renamingKey,
                 pulse = entry.path.key in pastedKeys,
+                tags = tagsByKey[entry.path.key] ?: emptySet(),
                 hooks = hooks,
                 onTap = onTap,
                 onDoubleTap = onDoubleTap,
@@ -118,6 +121,7 @@ private fun IconGridItem(
     iconSizeDp: Int,
     renaming: Boolean,
     pulse: Boolean,
+    tags: Set<String>,
     hooks: EntryItemHooks,
     onTap: (FsEntry) -> Unit,
     onDoubleTap: (FsEntry) -> Unit,
@@ -224,7 +228,7 @@ private fun IconGridItem(
             if (entry.previewUri != null) {
                 AsyncImage(
                     model = entry.previewUri,
-                    contentDescription = null,
+                    contentDescription = entry.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(iconBox - 6.dp)
@@ -237,6 +241,19 @@ private fun IconGridItem(
                     tint = entryTint(entry.kind, colors),
                     modifier = Modifier.size(iconBox * 0.72f),
                 )
+            }
+        }
+        if (tags.isNotEmpty()) {
+            Row(modifier = Modifier.padding(top = 2.dp)) {
+                tags.forEach { tag ->
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 1.dp)
+                            .size(7.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(TAG_COLOR_VALUES[tag] ?: colors.textSecondary),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(3.dp))

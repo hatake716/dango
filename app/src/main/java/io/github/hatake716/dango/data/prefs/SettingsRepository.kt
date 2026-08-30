@@ -30,6 +30,14 @@ data class Settings(
     val onboardingDone: Boolean = false,
     /** アイコン表示のサイズ（SPEC §4.4: ピンチで 48〜256dp） */
     val iconSizeDp: Int = 76,
+    /** シングルタップで開く（SPEC §6.1, §10） */
+    val singleTapOpen: Boolean = false,
+    /** Material You 動的カラー（SPEC §9: 既定オフ。有効時はアクセントのみ追従） */
+    val dynamicColor: Boolean = false,
+    /** 起動時の生体認証ロック（SPEC §10 安全） */
+    val biometricLock: Boolean = false,
+    /** ゴミ箱の自動削除日数（SPEC §6.6） */
+    val trashAutoDays: Int = 30,
 )
 
 /** テーマ・表示設定の永続化（SPEC §8.1 data/prefs。フォルダごとの記憶は M1 以降で Room へ） */
@@ -51,11 +59,31 @@ class SettingsRepository(private val context: Context) {
                 showHidden = p[KEY_SHOW_HIDDEN] ?: false,
                 onboardingDone = p[KEY_ONBOARDING_DONE] ?: false,
                 iconSizeDp = (p[KEY_ICON_SIZE] ?: 76).coerceIn(48, 256),
+                singleTapOpen = p[KEY_SINGLE_TAP] ?: false,
+                dynamicColor = p[KEY_DYNAMIC_COLOR] ?: false,
+                biometricLock = p[KEY_BIOMETRIC] ?: false,
+                trashAutoDays = p[KEY_TRASH_DAYS] ?: 30,
             )
         }
 
     suspend fun setIconSizeDp(size: Int) {
         context.dataStore.edit { it[KEY_ICON_SIZE] = size.coerceIn(48, 256) }
+    }
+
+    suspend fun setSingleTapOpen(value: Boolean) {
+        context.dataStore.edit { it[KEY_SINGLE_TAP] = value }
+    }
+
+    suspend fun setDynamicColor(value: Boolean) {
+        context.dataStore.edit { it[KEY_DYNAMIC_COLOR] = value }
+    }
+
+    suspend fun setBiometricLock(value: Boolean) {
+        context.dataStore.edit { it[KEY_BIOMETRIC] = value }
+    }
+
+    suspend fun setTrashAutoDays(days: Int) {
+        context.dataStore.edit { it[KEY_TRASH_DAYS] = days }
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
@@ -105,5 +133,9 @@ class SettingsRepository(private val context: Context) {
         val KEY_SHOW_HIDDEN = booleanPreferencesKey("show_hidden")
         val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val KEY_ICON_SIZE = intPreferencesKey("icon_size_dp")
+        val KEY_SINGLE_TAP = booleanPreferencesKey("single_tap_open")
+        val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val KEY_BIOMETRIC = booleanPreferencesKey("biometric_lock")
+        val KEY_TRASH_DAYS = intPreferencesKey("trash_auto_days")
     }
 }

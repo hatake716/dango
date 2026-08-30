@@ -3,6 +3,9 @@ package io.github.hatake716.dango.ui.browser.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,8 +22,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Movie
@@ -42,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.R
+import io.github.hatake716.dango.data.db.ConnectionEntity
 import io.github.hatake716.dango.domain.model.FsPath
 import io.github.hatake716.dango.ui.browser.SidebarItem
 import io.github.hatake716.dango.ui.theme.DangoTheme
@@ -65,6 +71,14 @@ fun SidebarContent(
     modifier: Modifier = Modifier,
     /** ドラッグ&ドロップの受け口（SPEC §4.3）。null なら受け付けない */
     onDropKeys: ((SidebarItem, Set<String>) -> Unit)? = null,
+    /** ネットワーク接続（SPEC §4.3）。M4 */
+    connections: List<ConnectionEntity> = emptyList(),
+    onOpenConnection: (ConnectionEntity) -> Unit = {},
+    onEditConnection: (ConnectionEntity) -> Unit = {},
+    onAddConnection: () -> Unit = {},
+    /** タグ（SPEC §4.3）。M5 */
+    tagColors: List<String> = emptyList(),
+    onOpenTag: (String) -> Unit = {},
 ) {
     val colors = DangoTheme.colors
     Column(
@@ -84,6 +98,110 @@ fun SidebarContent(
         locations.forEach { item ->
             SidebarRow(item, selected = currentPath == item.path, onNavigate = onNavigate, onDropKeys = onDropKeys)
         }
+        // ネットワーク（SPEC §4.3。長押し/右クリックで編集）
+        Spacer(Modifier.height(14.dp))
+        SidebarSectionLabel(stringResource(R.string.sidebar_network))
+        connections.forEach { conn ->
+            NetworkRow(
+                connection = conn,
+                selected = currentPath.scheme == conn.protocol &&
+                    currentPath.segments.firstOrNull() == conn.id.toString(),
+                onOpen = { onOpenConnection(conn) },
+                onEdit = { onEditConnection(conn) },
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(30.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .swallowRightClick()
+                .clickable { onAddConnection() }
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Add,
+                contentDescription = null,
+                tint = colors.textSecondary,
+                modifier = Modifier.size(15.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.net_add_connection),
+                color = colors.textSecondary,
+                fontSize = 12.sp,
+            )
+        }
+        // タグ（SPEC §4.3: 色付きドット。タップでタグ検索）
+        if (tagColors.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            SidebarSectionLabel(stringResource(R.string.sidebar_tags))
+            tagColors.forEach { tag ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .swallowRightClick()
+                        .clickable { onOpenTag(tag) }
+                        .padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(11.dp)
+                            .clip(CircleShape)
+                            .background(TAG_COLOR_VALUES[tag] ?: colors.textSecondary),
+                    )
+                    Spacer(Modifier.width(9.dp))
+                    Text(
+                        text = stringResource(tagLabelRes(tag)),
+                        color = colors.textPrimary,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun NetworkRow(
+    connection: ConnectionEntity,
+    selected: Boolean,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+) {
+    val colors = DangoTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(34.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) colors.selectionUnfocused else colors.sidebar)
+            .onRightClick { onEdit() }
+            .combinedClickable(
+                onClick = onOpen,
+                onLongClick = onEdit,
+            )
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Dns,
+            contentDescription = null,
+            tint = colors.accent,
+            modifier = Modifier.size(17.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = connection.name,
+            color = colors.textPrimary,
+            fontSize = 13.sp,
+            maxLines = 1,
+        )
     }
 }
 

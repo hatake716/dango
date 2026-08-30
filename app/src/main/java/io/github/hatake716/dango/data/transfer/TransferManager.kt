@@ -52,9 +52,12 @@ data class TransferResult(
 
 /**
  * コピー・移動の実行エンジン(SPEC §6.3, §8.3)。
- * ローカル同士は M1 スコープ。ネットワーク対応時に FileSystemProvider 経由へ一般化する。
+ * ローカル同士は java.io.File の高速パス、ネットワークが絡む場合は
+ * FileSystemProvider の openRead→openWrite ストリームコピー（SPEC §8.2）。
  */
-class TransferManager {
+class TransferManager(
+    private val registry: io.github.hatake716.dango.data.fs.ProviderRegistry,
+) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -88,7 +91,12 @@ class TransferManager {
         currentJob = scope.launch {
             var result = TransferResult(emptyList(), 0, entries.size, cancelled = true)
             try {
-                result = run(entries, destDir, move, duplicateInPlace)
+                val allLocal = destDir.scheme == "file" && entries.all { it.path.scheme == "file" }
+                result = if (allLocal) {
+                    run(entries, destDir, move, duplicateInPlace)
+                } else {
+                    runGeneric(entries, destDir, move)
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -243,6 +251,143 @@ class TransferManager {
             copiedNames += targetName
             if (move) {
                 src.deleteRecursively()
+            }
+        }
+        return TransferResult(copiedNames, skipped, failed, cancelled = false)
+    }
+
+    /**
+     * ネットワークが絡む転送: FileSystemProvider のストリームコピーで汎用化（SPEC §8.2）。
+     * 同名衝突はローカル版と同じダイアログ（REPLACE は削除→コピー。ネットワークは一時名スワップ不可のため）。
+     */
+    private suspend fun runGeneric(
+        entries: List<FsEntry>,
+        destDir: FsPath,
+        move: Boolean,
+    ): TransferResult {
+        val destProvider = registry.forPath(destDir)
+
+        // 自分自身（または子孫）への移動・コピーを拒否
+        for (e in entries) {
+            if (e.isDir && (destDir == e.path || destDir.isDescendantOf(e.path))) {
+                throw IOException("フォルダを自分自身の中へコピー・移動することはできません")
+            }
+        }
+
+        // 事前スキャン（進捗の分母）。ネットワークの再帰列挙になるため件数は控えめに数える
+        var totalBytes = 0L
+        var totalFiles = 0
+        suspend fun scan(entry: FsEntry) {
+            coroutineContext.ensureActive()
+            if (entry.isDir) {
+                val provider = registry.forPath(entry.path)
+                val children = mutableListOf<FsEntry>()
+                provider.list(entry.path).collect { children += it }
+                children.forEach { scan(it) }
+            } else {
+                totalFiles++
+                totalBytes += entry.size.coerceAtLeast(0)
+            }
+        }
+        entries.forEach { scan(it) }
+        val kind = if (move) OperationKind.MOVE else OperationKind.COPY
+        _progress.value = TransferProgress(kind, 0, totalBytes, 0, totalFiles, "")
+
+        var doneBytes = 0L
+        var doneFiles = 0
+        var stickyChoice: ConflictResolution? = null
+        val copiedNames = mutableListOf<String>()
+        var skipped = 0
+        var failed = 0
+
+        val existing = mutableListOf<FsEntry>()
+        runCatching { destProvider.list(destDir).collect { existing += it } }
+        val existingNames = existing.mapTo(mutableSetOf()) { it.name }
+
+        suspend fun copyEntry(src: FsEntry, target: FsPath) {
+            coroutineContext.ensureActive()
+            val srcProvider = registry.forPath(src.path)
+            if (src.isDir) {
+                destProvider.mkdir(target)
+                val children = mutableListOf<FsEntry>()
+                srcProvider.list(src.path).collect { children += it }
+                for (child in children) copyEntry(child, target.child(child.name))
+            } else {
+                srcProvider.openRead(src.path).use { source ->
+                    destProvider.openWrite(target, append = false).use { sink ->
+                        val buffer = okio.Buffer()
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val read = source.read(buffer, 256 * 1024L)
+                            if (read == -1L) break
+                            sink.write(buffer, read)
+                            doneBytes += read
+                            _progress.value = TransferProgress(
+                                kind, doneBytes, totalBytes, doneFiles, totalFiles, src.name,
+                            )
+                        }
+                        sink.flush()
+                    }
+                }
+                doneFiles++
+            }
+        }
+
+        for (src in entries) {
+            coroutineContext.ensureActive()
+            var targetName = src.name
+            val samePlace = src.path.parent == destDir
+            if (samePlace && move) {
+                skipped++
+                continue
+            }
+            val conflicting = existingNames.firstOrNull { it.equals(targetName, ignoreCase = true) }
+            if (conflicting != null) {
+                if (samePlace) {
+                    targetName = NameUtils.uniqueName(existingNames, targetName, src.isDir)
+                } else {
+                    val choice = stickyChoice ?: run {
+                        val request = ConflictRequest(targetName)
+                        _conflict.value = request
+                        val answer = request.response.await()
+                        _conflict.value = null
+                        if (answer.applyToAll) stickyChoice = answer.resolution
+                        answer.resolution
+                    }
+                    when (choice) {
+                        ConflictResolution.CANCEL_ALL ->
+                            return TransferResult(copiedNames, skipped, failed, cancelled = true)
+                        ConflictResolution.SKIP -> {
+                            skipped++
+                            continue
+                        }
+                        ConflictResolution.KEEP_BOTH ->
+                            targetName = NameUtils.uniqueName(existingNames, targetName, src.isDir)
+                        ConflictResolution.REPLACE ->
+                            runCatching { destProvider.delete(destDir.child(conflicting), recursive = true) }
+                    }
+                }
+            }
+            val target = destDir.child(targetName)
+            val ok = try {
+                copyEntry(src, target)
+                true
+            } catch (e: CancellationException) {
+                runCatching { destProvider.delete(target, recursive = true) }
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            if (!ok) {
+                failed++
+                runCatching { destProvider.delete(target, recursive = true) }
+                continue
+            }
+            existingNames += targetName
+            copiedNames += targetName
+            if (move) {
+                runCatching { registry.forPath(src.path).delete(src.path, recursive = true) }
+                    .onFailure { failed++ }
             }
         }
         return TransferResult(copiedNames, skipped, failed, cancelled = false)

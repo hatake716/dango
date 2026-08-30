@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.combinedClickable
 import io.github.hatake716.dango.R
+import io.github.hatake716.dango.data.net.NetPaths
 import io.github.hatake716.dango.domain.model.FsPath
 import io.github.hatake716.dango.ui.theme.DangoTheme
 
@@ -40,15 +41,37 @@ fun PathBar(
     onPathCopied: () -> Unit,
     /** パスバーへのドロップでその階層に移動（SPEC §4.5）。null なら受け付けない */
     onDropKeys: ((FsPath, Set<String>) -> Unit)? = null,
+    /** ネットワーク接続のルートラベル解決（接続 ID → 表示名） */
+    connectionLabel: (Long) -> String? = { null },
 ) {
     val colors = DangoTheme.colors
     val clipboard = LocalClipboardManager.current
     val scrollState = rememberScrollState()
 
-    val crumbs: List<Pair<String, FsPath>> = if (currentPath.scheme == "trash") {
-        listOf(stringResource(R.string.loc_trash) to currentPath)
-    } else {
-        buildCrumbs(
+    val crumbs: List<Pair<String, FsPath>> = when {
+        currentPath.scheme == "trash" ->
+            listOf(stringResource(R.string.loc_trash) to currentPath)
+        currentPath.scheme == "tag" ->
+            listOf(
+                stringResource(
+                    tagLabelRes(currentPath.segments.firstOrNull() ?: "gray"),
+                ) to currentPath,
+            )
+        NetPaths.isNetwork(currentPath) -> {
+            // 接続名をルートとして、リモートパスの各階層をたどれるようにする
+            val connId = NetPaths.connectionId(currentPath)
+            val rootLabel = connectionLabel(connId) ?: currentPath.scheme
+            val root = FsPath(currentPath.scheme, listOf(connId.toString()))
+            buildList {
+                add(rootLabel to root)
+                var p = root
+                for (segment in NetPaths.remoteSegments(currentPath)) {
+                    p = p.child(segment)
+                    add(segment to p)
+                }
+            }
+        }
+        else -> buildCrumbs(
             currentPath = currentPath,
             internalRoot = internalRoot,
             internalLabel = stringResource(R.string.loc_internal),

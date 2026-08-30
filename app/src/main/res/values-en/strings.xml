@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">dango</string>
+
+    <string name="onboarding_title">To show all of your files</string>
+    <string name="onboarding_body">dango is a file manager that browses your whole internal storage, just like Finder. To show every folder and file, the “All files access” permission is required. If you decline, dango keeps working in a limited normal mode.</string>
+    <string name="onboarding_grant">Grant full access</string>
+    <string name="onboarding_skip">Continue in normal mode</string>
+    <string name="normal_mode_banner">Normal mode: some files are hidden</string>
+    <string name="normal_mode_grant">Grant</string>
+
+    <string name="cd_sidebar">Toggle sidebar</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_forward">Forward</string>
+    <string name="cd_view_icon">Icon view</string>
+    <string name="cd_view_list">List view</string>
+    <string name="cd_view_column">Column view</string>
+    <string name="cd_view_gallery">Gallery view</string>
+    <string name="cd_sort">Sort</string>
+    <string name="cd_more">More</string>
+    <string name="cd_exit_selection">Exit selection</string>
+    <string name="cd_select_all">Select all</string>
+    <string name="sel_count">%1$d selected</string>
+
+    <string name="sort_name">Name</string>
+    <string name="sort_kind">Kind</string>
+    <string name="sort_size">Size</string>
+    <string name="sort_date">Date Modified</string>
+    <string name="sort_folders_first">Keep folders on top</string>
+
+    <string name="menu_show_hidden">Show hidden files</string>
+    <string name="menu_reload">Reload</string>
+    <string name="menu_theme">Theme</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="menu_new_folder">New Folder</string>
+    <string name="menu_new_text">New Text File</string>
+    <string name="menu_new_markdown">New Markdown File</string>
+    <string name="menu_select">Select…</string>
+    <string name="menu_invert_selection">Invert selection</string>
+    <string name="menu_empty_trash">Empty Trash</string>
+
+    <string name="sidebar_favorites">Favorites</string>
+    <string name="sidebar_locations">Locations</string>
+    <string name="fav_downloads">Downloads</string>
+    <string name="fav_documents">Documents</string>
+    <string name="fav_pictures">Pictures</string>
+    <string name="fav_movies">Movies</string>
+    <string name="fav_music">Music</string>
+    <string name="loc_internal">Internal Storage</string>
+    <string name="loc_trash">Trash</string>
+
+    <string name="col_name">Name</string>
+    <string name="col_date">Date Modified</string>
+    <string name="col_size">Size</string>
+    <string name="col_kind">Kind</string>
+
+    <string name="status_items">%1$d items</string>
+    <string name="status_selected">%1$d of %2$d selected</string>
+    <string name="status_free">%1$s available</string>
+
+    <string name="empty_folder">Folder is empty</string>
+    <string name="trash_empty">Trash is empty</string>
+    <string name="error_cannot_open">Cannot open this folder</string>
+    <string name="restricted_folder">This folder cannot be accessed due to Android 11+ system restrictions</string>
+    <string name="trash_folder_preview">Restore the folder with “Put Back” before opening it</string>
+    <string name="path_copied">Path copied</string>
+
+    <string name="kind_folder">Folder</string>
+
+    <string name="untitled_folder">untitled folder</string>
+    <string name="untitled_file">untitled</string>
+    <string name="op_failed">The operation failed</string>
+    <string name="rename_invalid">That name cannot be used</string>
+    <string name="rename_exists">An item with that name already exists</string>
+    <string name="clip_copied">Copied. Choose “Paste” at the destination</string>
+    <string name="clip_cut">Ready to move. Choose “Move Here” at the destination</string>
+    <string name="paste_into_itself">A folder cannot be copied or moved into itself</string>
+    <string name="share_no_files">Nothing to share (folders cannot be shared)</string>
+
+    <string name="clip_bar_copy">%1$d items copied</string>
+    <string name="clip_bar_move">%1$d items ready to move</string>
+    <string name="clip_paste">Paste</string>
+    <string name="clip_move_here">Move Here</string>
+    <string name="cd_clear_clipboard">Clear clipboard</string>
+
+    <string name="act_preview">Preview</string>
+    <string name="act_share">Share</string>
+    <string name="act_copy">Copy</string>
+    <string name="act_move">Move</string>
+    <string name="act_duplicate">Duplicate</string>
+    <string name="act_rename">Rename</string>
+    <string name="act_compress">Compress</string>
+    <string name="act_delete">Delete</string>
+    <string name="act_info">Get Info</string>
+    <string name="act_restore">Put Back</string>
+    <string name="act_delete_forever">Delete Now</string>
+
+    <string name="transfer_preparing">Preparing…</string>
+    <string name="transfer_copying">Copying (%1$d/%2$d)</string>
+    <string name="transfer_moving">Moving (%1$d/%2$d)</string>
+    <string name="transfer_cancel">Cancel</string>
+    <string name="transfer_channel_name">File transfers</string>
+    <string name="transfer_done">Done</string>
+    <string name="transfer_partial">Some items could not be processed</string>
+    <string name="transfer_cancelled">Cancelled</string>
+    <string name="transfer_status_copy">Copying…</string>
+    <string name="transfer_status_move">Moving…</string>
+    <string name="transfer_status_extract">Extracting…</string>
+    <string name="transfer_status_compress">Compressing…</string>
+    <string name="transfer_extracting">Extracting (%1$d/%2$d)</string>
+    <string name="transfer_compressing">Compressing (%1$d/%2$d)</string>
+
+    <string name="conflict_title">“%1$s” already exists</string>
+    <string name="conflict_body">An item with the same name already exists in this location. What would you like to do?</string>
+    <string name="conflict_keep_both">Keep Both</string>
+    <string name="conflict_replace">Replace</string>
+    <string name="conflict_skip">Skip</string>
+    <string name="conflict_apply_all">Apply to all</string>
+    <string name="conflict_cancel_all">Cancel</string>
+
+    <string name="trash_done">Moved %1$d items to Trash</string>
+    <string name="undo">Put Back</string>
+    <string name="delete_confirm_title">Delete permanently?</string>
+    <string name="delete_confirm_body">%1$d items will be deleted permanently. This cannot be undone.</string>
+    <string name="empty_trash_confirm_body">All items in the Trash will be deleted permanently. This cannot be undone.</string>
+    <string name="delete_confirm_ok">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="trash_deleted_forever">Deleted permanently</string>
+    <string name="trash_restored">Put back</string>
+    <string name="trash_restore_partial">Some items could not be put back (they remain in the Trash)</string>
+
+    <string name="batch_rename_title">Rename Items</string>
+    <string name="batch_mode_seq">Sequence</string>
+    <string name="batch_mode_replace">Find &amp; Replace</string>
+    <string name="batch_mode_affix">Add Text</string>
+    <string name="batch_base_name">Base name</string>
+    <string name="batch_start_number">Start at</string>
+    <string name="batch_find">Find</string>
+    <string name="batch_replace_with">Replace with</string>
+    <string name="batch_prefix">Prefix</string>
+    <string name="batch_suffix">Suffix</string>
+    <string name="batch_apply">Apply</string>
+    <string name="batch_preview">Preview: %1$s</string>
+
+    <string name="ql_open_with">Open With…</string>
+    <string name="ql_share">Share</string>
+    <string name="ql_info">Info</string>
+    <string name="ql_close">Close</string>
+    <string name="ql_load_error">Could not load</string>
+    <string name="ql_page_of">%1$d / %2$d</string>
+    <string name="ql_speed">Speed</string>
+    <string name="ql_pdf_password_title">Password-protected PDF</string>
+    <string name="ql_pdf_password_body">This PDF is protected with a password.</string>
+    <string name="ql_pdf_password_hint">Password</string>
+    <string name="ql_pdf_unlock">Open</string>
+    <string name="ql_pdf_wrong_password">Wrong password. Please try again.</string>
+    <string name="ql_pdf_unsupported">Password-protected PDFs require Android 15 or later on this device</string>
+
+    <string name="txt_wrap">Wrap lines</string>
+    <string name="txt_load_all">Load all</string>
+    <string name="txt_truncated">Showing first 2 MB</string>
+    <string name="txt_edit">Edit</string>
+    <string name="txt_save">Save</string>
+    <string name="txt_save_confirm_title">Save changes?</string>
+    <string name="txt_save_confirm_body">“%1$s” will be overwritten.</string>
+    <string name="txt_saved">Saved</string>
+    <string name="txt_saved_utf8">Saved as UTF-8 because some characters cannot be represented in the original encoding</string>
+    <string name="txt_line_ending">Line endings</string>
+    <string name="txt_find">Find</string>
+    <string name="txt_replace">Replace</string>
+    <string name="txt_replace_all">Replace All</string>
+    <string name="txt_next">Next</string>
+    <string name="txt_unsaved_title">Save changes?</string>
+    <string name="txt_unsaved_body">You have unsaved changes.</string>
+    <string name="txt_discard">Discard</string>
+    <string name="txt_read_only">Read-only because the file is larger than 2 MB</string>
+    <string name="txt_undo">Undo</string>
+    <string name="txt_redo">Redo</string>
+
+    <string name="info_title">Info</string>
+    <string name="info_name">Name</string>
+    <string name="info_kind">Kind</string>
+    <string name="info_size">Size</string>
+    <string name="info_location">Where</string>
+    <string name="info_created">Created</string>
+    <string name="info_modified">Modified</string>
+    <string name="info_permissions">Permissions</string>
+    <string name="info_hash_md5">MD5</string>
+    <string name="info_hash_sha256">SHA-256</string>
+    <string name="info_compute">Compute</string>
+    <string name="info_items">%1$d items</string>
+    <string name="info_calculating">Calculating…</string>
+
+    <string name="extract_no_space">Not enough free space to extract</string>
+    <string name="archive_unsupported">This archive format cannot be opened</string>
+    <string name="archive_exported">Exported next to the archive</string>
+    <string name="archive_password_title">Password-protected archive</string>
+    <string name="archive_password_body">“%1$s” is protected with a password.</string>
+    <string name="archive_entry_count">%1$d entries</string>
+    <string name="compress_title">Compress %1$d items</string>
+    <string name="compress_level">Compression level</string>
+    <string name="compress_level_fast">Fast</string>
+    <string name="compress_level_normal">Normal</string>
+    <string name="compress_level_max">Best</string>
+    <string name="compress_password_optional">Password (optional, zip only)</string>
+    <string name="compress_delete_source">Delete originals after compressing</string>
+    <string name="extract_encoding_label">Entry name encoding</string>
+    <string name="encoding_auto">Auto</string>
+    <string name="encoding_utf8">UTF-8</string>
+    <string name="encoding_sjis">Shift_JIS</string>
+    <string name="encoding_eucjp">EUC-JP</string>
+    <string name="encoding_cp437">CP437</string>
+    <string name="extract_wrap_folder">Extract into a folder</string>
+
+    <string name="ctx_open">Open</string>
+    <string name="ctx_browse_archive">Show Contents</string>
+    <string name="ctx_extract_here">Extract Here</string>
+    <string name="ctx_extract_options">Extract with Options…</string>
+    <string name="ctx_extract_short">Extract</string>
+    <string name="ctx_extract_options_short">Options</string>
+    <string name="ctx_export_entry">Export to Folder</string>
+    <string name="ctx_move_to_trash">Move to Trash</string>
+    <string name="archive_default_name">Archive</string>
+
+    <string name="drag_moved">Moved</string>
+
+    <string name="sidebar_network">Network</string>
+    <string name="net_add_connection">Add Connection…</string>
+    <string name="net_downloading">Downloading…</string>
+    <string name="net_error">A network error occurred</string>
+    <string name="net_unsupported_op">This operation is not supported on network drives</string>
+    <string name="hostkey_changed">The server’s host key has changed. Connection aborted for safety (recreate the connection to trust the new key)</string>
+    <string name="connection_saved">Connection saved</string>
+    <string name="connection_testing">Testing connection…</string>
+    <string name="connection_test_ok">Connection succeeded</string>
+    <string name="connection_test_ng">Connection failed</string>
+    <string name="ftp_plaintext_warning">FTP is not encrypted. Your password and data are sent in plain text</string>
+    <string name="conn_name">Display name</string>
+    <string name="conn_protocol">Protocol</string>
+    <string name="conn_host">Host (URL allowed for WebDAV)</string>
+    <string name="conn_port">Port</string>
+    <string name="conn_share">Share / Path</string>
+    <string name="conn_username">Username</string>
+    <string name="conn_password">Password</string>
+    <string name="conn_save_password">Save password</string>
+    <string name="conn_test">Test</string>
+    <string name="conn_save">Save</string>
+    <string name="conn_delete">Delete this connection</string>
+    <string name="net_password_body">A password is required to connect to “%1$s”.</string>
+
+    <string name="cd_search">Search</string>
+    <string name="search_hint">Search by name…</string>
+    <string name="search_scope_folder">This folder</string>
+    <string name="search_scope_device">Entire device</string>
+    <string name="search_local_only">Search is available in local folders only</string>
+    <string name="search_searching">Searching…</string>
+
+    <string name="sidebar_tags">Tags</string>
+    <string name="ctx_tags">Tags</string>
+    <string name="tag_local_only">Tags can only be applied to files on internal storage</string>
+    <string name="tag_red">Red</string>
+    <string name="tag_orange">Orange</string>
+    <string name="tag_yellow">Yellow</string>
+    <string name="tag_green">Green</string>
+    <string name="tag_blue">Blue</string>
+    <string name="tag_purple">Purple</string>
+    <string name="tag_gray">Gray</string>
+
+    <string name="menu_settings">Settings…</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_behavior">Behavior</string>
+    <string name="settings_storage">Storage</string>
+    <string name="settings_security">Security</string>
+    <string name="settings_dynamic_color">Material You dynamic color</string>
+    <string name="settings_dynamic_color_desc">Match the accent color to your device theme</string>
+    <string name="settings_single_tap">Open with a single tap</string>
+    <string name="settings_single_tap_desc">Open items immediately instead of selecting first</string>
+    <string name="settings_trash_days">Auto-empty Trash</string>
+    <string name="settings_trash_days_value">%1$d days</string>
+    <string name="settings_clear_cache">Clear cache</string>
+    <string name="settings_clear_cache_desc">Delete thumbnail and preview temp files</string>
+    <string name="settings_biometric">Lock with biometrics at launch</string>
+    <string name="settings_biometric_desc">Protects your network connection credentials</string>
+    <string name="settings_version">Version</string>
+    <string name="cache_cleared">Cache cleared</string>
+
+    <string name="lock_title">dango is locked</string>
+    <string name="lock_unlock">Unlock</string>
+    <string name="lock_prompt_title">Unlock</string>
+    <string name="lock_prompt_subtitle">Authenticate with biometrics or your screen lock</string>
+</resources>

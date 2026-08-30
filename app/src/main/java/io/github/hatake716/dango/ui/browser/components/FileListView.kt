@@ -75,6 +75,7 @@ fun FileListView(
     sort: SortSpec,
     renamingKey: String?,
     pastedKeys: Set<String>,
+    tagsByKey: Map<String, Set<String>>,
     hooks: EntryItemHooks,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -97,6 +98,7 @@ fun FileListView(
                     isAlt = index % 2 == 1,
                     renaming = row.entry.path.key == renamingKey,
                     pulse = row.entry.path.key in pastedKeys,
+                    tags = tagsByKey[row.entry.path.key] ?: emptySet(),
                     hooks = hooks,
                     showExpander = showExpanders,
                     onTap = onTap,
@@ -187,6 +189,7 @@ private fun ListRow(
     isAlt: Boolean,
     renaming: Boolean,
     pulse: Boolean,
+    tags: Set<String>,
     hooks: EntryItemHooks,
     showExpander: Boolean,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -312,7 +315,7 @@ private fun ListRow(
         if (entry.previewUri != null) {
             AsyncImage(
                 model = entry.previewUri,
-                contentDescription = null,
+                contentDescription = entry.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(18.dp)
@@ -345,6 +348,19 @@ private fun ListRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+        }
+        if (tags.isNotEmpty()) {
+            Row(modifier = Modifier.padding(end = 6.dp)) {
+                tags.forEach { tag ->
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 1.dp)
+                            .size(7.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(TAG_COLOR_VALUES[tag] ?: secondary),
+                    )
+                }
+            }
         }
         Text(
             text = formatDateTime(entry.lastModified),
