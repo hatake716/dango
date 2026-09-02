@@ -13,11 +13,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropTransferData
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import io.github.hatake716.dango.ui.theme.DangoTheme
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerId
@@ -130,8 +132,21 @@ fun Modifier.entryDragSource(
 ): Modifier {
     val currentKeys = rememberUpdatedState(transferKeys)
     val currentMouseStart = rememberUpdatedState(onMouseDragStart)
-    // 新旧 API が同名のためラムダだけでは曖昧になる。名前付き引数でレガシー版を選ぶ
-    return dragAndDropSource(block = {
+    val shadowColor = DangoTheme.colors.selectionFocused
+    // 既定のドラッグシャドウ（decoration 引数なしのオーバーロード）は使わない。
+    // 既定実装はノードの描画全体を「録画済み GraphicsLayer の再生」に差し替える
+    // （シャドウ用キャッシュ。foundation の CacheDrawScopeDragShadowCallback）。
+    // Android 17 ではレイアウト変更後にこのキャッシュが再録画されず、列幅ドラッグ中に
+    // 行の描画だけが静止する。シャドウを自前の軽量描画にすればキャッシュ層自体が
+    // 作られず、内容は通常経路で描画される
+    return dragAndDropSource(
+        drawDragDecoration = {
+            drawRoundRect(
+                color = shadowColor.copy(alpha = 0.35f),
+                cornerRadius = CornerRadius(8.dp.toPx()),
+            )
+        },
+        block = {
         awaitEachGesture {
             val down = awaitFirstDown()
             // 副・中ボタンのドラッグは対象外（右クリックは onRightClick が Initial パスで
@@ -180,7 +195,8 @@ fun Modifier.entryDragSource(
                 }
             }
         }
-    })
+        },
+    )
 }
 
 /**

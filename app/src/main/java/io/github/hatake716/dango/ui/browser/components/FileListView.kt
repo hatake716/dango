@@ -56,6 +56,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
@@ -94,6 +95,22 @@ private val HANDLE_WIDTH = 18.dp
 
 /** リスト列の実効幅（クランプ適用後） */
 private data class ListColumnWidths(val date: Dp, val size: Dp, val kind: Dp)
+
+/**
+ * 列幅をレイアウト（測定）フェーズで State から読むモディファイア。
+ * Modifier.width(dp) の差し替えでは「再コンポーズ→Modifier差分→再測定」を経由するが、
+ * この経路は環境によって再測定が適用されないことがある（実機 Android 17 で、
+ * ドラッグ中に行が再コンポーズされてもレイアウトが動かない現象を確認）。
+ * 測定ラムダ内で snapshot state を読めば、幅の変更はレイアウト無効化として
+ * 直接伝わり、再コンポーズにもModifier差分にも依存しない。
+ */
+private fun Modifier.columnWidth(width: () -> Dp): Modifier =
+    layout { measurable, constraints ->
+        val w = width().roundToPx().coerceIn(0, constraints.maxWidth)
+        val placeable = measurable.measure(constraints.copy(minWidth = w, maxWidth = w))
+        layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+    }
+
 
 /** リスト表示（SPEC §4.4: ▸ でツリー展開、列幅はヘッダ境界のドラッグで調整） */
 @Composable
@@ -142,7 +159,7 @@ fun FileListView(
         // 各行に State を読ませて確実にドラッグへ追従させる
         val widthsState = rememberUpdatedState(ListColumnWidths(dateWidth, sizeWidth, kindWidth))
         Column(modifier = Modifier.fillMaxSize()) {
-            ListHeader(sort, onSetSortKey, dateWidth, sizeWidth, kindWidth, onSetColumnWidths)
+            ListHeader(sort, onSetSortKey, widthsState, onSetColumnWidths)
             HorizontalDivider(color = colors.divider)
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(rows, key = { _, r -> r.entry.path.key }) { index, row ->
@@ -178,9 +195,7 @@ fun FileListView(
 private fun ListHeader(
     sort: SortSpec,
     onSetSortKey: (SortKey) -> Unit,
-    dateWidth: Dp,
-    sizeWidth: Dp,
-    kindWidth: Dp,
+    widths: State<ListColumnWidths>,
     onSetColumnWidths: (Int, Int, Int) -> Unit,
 ) {
     val colors = DangoTheme.colors
@@ -189,7 +204,10 @@ private fun ListHeader(
     // 各ハンドルにドラッグ開始時点の列幅（date/size/kind の dp）を渡す。
     // 移動量は開始時からの累積で適用する（フレームごとの差分を Int に丸めると
     // 1px 未満の動きが失われて追従しないため）
-    val currentWidths = { floatArrayOf(dateWidth.value, sizeWidth.value, kindWidth.value) }
+    val currentWidths = {
+        val w = widths.value
+        floatArrayOf(w.date.value, w.size.value, w.kind.value)
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -204,16 +222,22 @@ private fun ListHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             HeaderCell(stringResource(R.string.col_name), SortKey.NAME, sort, onSetSortKey, Modifier.weight(1f))
-            HeaderCell(stringResource(R.string.col_date), SortKey.DATE, sort, onSetSortKey, Modifier.width(dateWidth))
+            HeaderCell(
+                stringResource(R.string.col_date), SortKey.DATE, sort, onSetSortKey,
+                Modifier.columnWidth { widths.value.date },
+            )
             HeaderCell(
                 stringResource(R.string.col_size), SortKey.SIZE, sort, onSetSortKey,
-                Modifier.width(sizeWidth), TextAlign.End,
+                Modifier.columnWidth { widths.value.size }, TextAlign.End,
             )
-            HeaderCell(stringResource(R.string.col_kind), SortKey.KIND, sort, onSetSortKey, Modifier.width(kindWidth))
+            HeaderCell(
+                stringResource(R.string.col_kind), SortKey.KIND, sort, onSetSortKey,
+                Modifier.columnWidth { widths.value.kind },
+            )
         }
         // 名前|変更日: 変更日の幅だけを変える（名前列が残りを吸収する）
         ColumnResizeHandle(
-            boundaryFromRight = 8.dp + kindWidth + sizeWidth + dateWidth,
+            boundaryFromRight = { with(widths.value) { 8.dp + kind + size + date } },
             currentWidths = currentWidths,
             onResize = { start, moved ->
                 // 名前列の最小幅を割らない範囲で変更日を広げられる。
@@ -234,7 +258,7 @@ private fun ListHeader(
         )
         // 変更日|サイズ: 隣接2列で幅を再配分（境界が指に追従する）
         ColumnResizeHandle(
-            boundaryFromRight = 8.dp + kindWidth + sizeWidth,
+            boundaryFromRight = { with(widths.value) { 8.dp + kind + size } },
             currentWidths = currentWidths,
             onResize = { start, moved ->
                 val m = moved.coerceIn(
@@ -250,7 +274,7 @@ private fun ListHeader(
         )
         // サイズ|種類
         ColumnResizeHandle(
-            boundaryFromRight = 8.dp + kindWidth,
+            boundaryFromRight = { 8.dp + widths.value.kind },
             currentWidths = currentWidths,
             onResize = { start, moved ->
                 val m = moved.coerceIn(
@@ -275,7 +299,7 @@ private fun ListHeader(
  */
 @Composable
 private fun BoxScope.ColumnResizeHandle(
-    boundaryFromRight: Dp,
+    boundaryFromRight: () -> Dp,
     currentWidths: () -> FloatArray,
     onResize: (FloatArray, Float) -> Unit,
 ) {
@@ -286,7 +310,8 @@ private fun BoxScope.ColumnResizeHandle(
     Box(
         modifier = Modifier
             .align(Alignment.CenterEnd)
-            .offset { IntOffset(-(boundaryFromRight - HANDLE_WIDTH / 2).roundToPx(), 0) }
+            // 配置フェーズで State を読む（offset ラムダは placement ごとに再評価される）
+            .offset { IntOffset(-(boundaryFromRight() - HANDLE_WIDTH / 2).roundToPx(), 0) }
             .width(HANDLE_WIDTH)
             .fillMaxHeight()
             // ヘッダ上の右クリックはセル同様ここでも握りつぶす
@@ -375,8 +400,8 @@ private fun ListRow(
 ) {
     val colors = DangoTheme.colors
     val entry = row.entry
-    // ここで State を読むことでこの行の再コンポーズスコープが列幅の変化を購読する
-    val (dateWidth, sizeWidth, kindWidth) = widths.value
+    // 列幅はコンポーズでは読まない: 各セルの columnWidth（測定フェーズ）で State を
+    // 読むため、ドラッグ中の幅変化は行の再コンポーズなしにレイアウトへ直接伝わる
     val background by animateColorAsState(
         targetValue = when {
             selected -> colors.selectionFocused
@@ -579,7 +604,7 @@ private fun ListRow(
             color = secondary,
             fontSize = 12.sp,
             maxLines = 1,
-            modifier = Modifier.width(dateWidth),
+            modifier = Modifier.columnWidth { widths.value.date },
         )
         Text(
             text = if (entry.isDir) "–" else formatSize(entry.size),
@@ -587,7 +612,7 @@ private fun ListRow(
             fontSize = 12.sp,
             maxLines = 1,
             textAlign = TextAlign.End,
-            modifier = Modifier.width(sizeWidth),
+            modifier = Modifier.columnWidth { widths.value.size },
         )
         Spacer(Modifier.width(8.dp))
         Text(
@@ -596,7 +621,7 @@ private fun ListRow(
             fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(kindWidth - 8.dp),
+            modifier = Modifier.columnWidth { widths.value.kind - 8.dp },
         )
     }
 }
