@@ -64,6 +64,7 @@ fun IconGridView(
     tagsByKey: Map<String, Set<String>>,
     hooks: EntryItemHooks,
     onMarqueeSelect: (Set<String>) -> Unit,
+    onClearSelection: () -> Unit,
     onTap: (FsEntry, Boolean, Boolean) -> Unit,
     onDoubleTap: (FsEntry) -> Unit,
     onLongPress: (FsEntry) -> Unit,
@@ -82,6 +83,7 @@ fun IconGridView(
                 enabled = { renamingKey == null },
                 currentSelection = { selection },
                 onSelect = onMarqueeSelect,
+                onClearSelection = onClearSelection,
             ),
     ) {
         LazyVerticalGrid(

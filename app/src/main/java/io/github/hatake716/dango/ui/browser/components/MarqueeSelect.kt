@@ -68,6 +68,8 @@ fun Modifier.marqueeItemBounds(state: MarqueeState, key: String): Modifier {
  * コンテナに付ける: マウス主ボタンで空白領域からドラッグすると選択矩形を描き、
  * 交差するアイテムを選択する（Finder のラバーバンド選択）。
  * Ctrl / Cmd / Shift を押しながらなら既存の選択に追加する。
+ * ドラッグに至らなかった空白クリックは選択解除として扱う（Finder の空白クリック相当。
+ * 修飾キー併用時は解除しない）。
  * タッチには反応しない（スクロールと競合するため。タッチは長押し選択モードを使う）。
  */
 @Composable
@@ -76,10 +78,12 @@ fun Modifier.marqueeSelectSource(
     enabled: () -> Boolean,
     currentSelection: () -> Set<String>,
     onSelect: (Set<String>) -> Unit,
+    onClearSelection: () -> Unit,
 ): Modifier {
     val enabledNow = rememberUpdatedState(enabled)
     val selectionNow = rememberUpdatedState(currentSelection)
     val onSelectNow = rememberUpdatedState(onSelect)
+    val onClearNow = rememberUpdatedState(onClearSelection)
     return pointerInput(state) {
         awaitEachGesture {
             // Initial パスで先取りする: ラバーバンド成立後は自分でイベントを消費して
@@ -120,6 +124,10 @@ fun Modifier.marqueeSelectSource(
                     }
                     onSelectNow.value(base + hits)
                 }
+            }
+            // ドラッグに至らずに離した＝空白の左クリック。修飾キーなしなら選択を解除する
+            if (!active && !additive) {
+                onClearNow.value()
             }
             state.rect = null
         }

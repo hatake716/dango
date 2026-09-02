@@ -572,6 +572,16 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             s.entries.map { it.path.key }
         }
 
+    /** 空白の左クリックによる選択解除（SPEC §6.2。Finder の空白クリック相当） */
+    fun clearSelectionOnBackgroundClick() {
+        val s = _state.value
+        if (s.renamingKey != null) return
+        if (s.selection.isNotEmpty() || s.selectionMode) {
+            _state.value = s.copy(selection = emptySet(), selectionMode = false)
+        }
+        tapAnchorKey = null
+    }
+
     /** ラバーバンド選択（SPEC §6.2）: 選択を置き換える。選択モードには入らない（Finder 同様） */
     fun setSelectionByMarquee(keys: Set<String>) {
         val s = _state.value

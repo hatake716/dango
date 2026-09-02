@@ -127,6 +127,7 @@ fun FileListView(
     kindWidthDp: Int,
     onSetColumnWidths: (Int, Int, Int) -> Unit,
     onMarqueeSelect: (Set<String>) -> Unit,
+    onClearSelection: () -> Unit,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry, Boolean, Boolean) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onLongPress: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -173,6 +174,7 @@ fun FileListView(
                         enabled = { renamingKey == null },
                         currentSelection = { selection },
                         onSelect = onMarqueeSelect,
+                        onClearSelection = onClearSelection,
                     ),
             ) {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
