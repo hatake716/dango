@@ -4,6 +4,15 @@
 
 ## 記録
 
+### 2026-09-02 — Finder 風フォルダアイコン（SPEC §15 後回し項目「独自青フォルダ」）
+
+- Material Icons のフォルダを廃し、macOS Finder 風の独自ベクター（FinderFolderIcon.kt）に変更。
+  左上タブ付きの背面パネル＋縦グラデーションの前面パネル＋上端ハイライトの3パス構成
+- グラデーションはベクター自身が持つため tint は Color.Unspecified（entryTint のフォルダ分岐）。
+  リスト/カラムの選択行でも白 tint で潰さず固有色のまま（Finder 同様）
+- 全ビュー（アイコン/リスト/カラム/ギャラリー/情報/QuickLook）へ自動反映。
+  ライト・ダーク両テーマでエミュレータのスクリーンショット確認済み
+
 ### 2026-09-02 — システム統合: ACTION_VIEW / GET_CONTENT / DocumentsProvider（SPEC §15 #11）
 
 - **ACTION_VIEW（フォルダ）**: intent-filter（resource/folder ほか）を登録し、file:// と

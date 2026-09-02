@@ -173,7 +173,12 @@ private fun ColumnPane(
                         Icon(
                             imageVector = entryIcon(entry.kind),
                             contentDescription = null,
-                            tint = if (isPathSelected) colors.onSelection else entryTint(entry.kind, colors),
+                            // フォルダは選択中も固有色のまま（Finder 同様）
+                            tint = if (isPathSelected && entry.kind != io.github.hatake716.dango.domain.model.EntryKind.FOLDER) {
+                                colors.onSelection
+                            } else {
+                                entryTint(entry.kind, colors)
+                            },
                             modifier = Modifier.size(15.dp),
                         )
                         Spacer(Modifier.width(6.dp))

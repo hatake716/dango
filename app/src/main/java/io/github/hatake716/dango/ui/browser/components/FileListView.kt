@@ -573,7 +573,12 @@ private fun ListRow(
             Icon(
                 imageVector = entryIcon(entry.kind),
                 contentDescription = null,
-                tint = if (selected) colors.onSelection else entryTint(entry.kind, colors),
+                // フォルダは選択中も Finder 同様に固有色のまま（白 tint で潰さない）
+                tint = if (selected && entry.kind != io.github.hatake716.dango.domain.model.EntryKind.FOLDER) {
+                    colors.onSelection
+                } else {
+                    entryTint(entry.kind, colors)
+                },
                 modifier = Modifier.size(18.dp),
             )
         }
