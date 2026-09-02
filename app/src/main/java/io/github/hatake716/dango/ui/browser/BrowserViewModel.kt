@@ -506,17 +506,51 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- 選択と開く（SPEC §6.1, §6.2） ---
 
-    fun onEntryTap(entry: FsEntry) {
+    fun onEntryTap(entry: FsEntry, ctrl: Boolean = false, shift: Boolean = false) {
         val key = entry.path.key
         val s = _state.value
         if (s.renamingKey != null) return
+        // 修飾キー付きクリック（マウス/キーボード操作。SPEC §6.2 の複数選択）。
+        // アーカイブ内は読み取り専用のため他の複数選択入口と同様に受け付けない
+        if (!s.selectionMode && (ctrl || shift) && !s.isArchive) {
+            when {
+                shift && tapAnchorKey == null -> {
+                    // アンカー未確定の Shift+クリックは追加選択として扱う
+                    //（トグルだと選択済みを外してしまい「拡張」の意図に反する）
+                    _state.value = s.copy(selection = s.selection + key)
+                    tapAnchorKey = key
+                }
+                shift -> {
+                    // アンカーからの範囲選択。アンカーは維持し、連続 Shift+クリックで伸縮できる
+                    val pool = visibleKeyOrder(s)
+                    val i0 = pool.indexOf(tapAnchorKey)
+                    val i1 = pool.indexOf(key)
+                    if (i0 >= 0 && i1 >= 0) {
+                        val range = pool.subList(minOf(i0, i1), maxOf(i0, i1) + 1).toSet()
+                        _state.value = s.copy(
+                            selection = if (ctrl) s.selection + range else range,
+                        )
+                    } else {
+                        _state.value = s.copy(selection = setOf(key))
+                        tapAnchorKey = key
+                    }
+                }
+                else -> {
+                    toggleSelect(key)
+                    tapAnchorKey = key
+                }
+            }
+            return
+        }
         if (s.selectionMode) {
             toggleSelect(key)
+            tapAnchorKey = key
             return
         }
         // シングルタップで開く（SPEC §6.1, §10）
         if (settings.value?.singleTapOpen == true) {
             _state.value = s.copy(selection = setOf(key))
+            tapAnchorKey = key
             open(entry)
             return
         }
@@ -524,7 +558,29 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             open(entry)
         } else {
             _state.value = s.copy(selection = setOf(key))
+            tapAnchorKey = key
         }
+    }
+
+    /** Shift+クリック範囲選択の起点（直近に単独/トグル選択したキー） */
+    private var tapAnchorKey: String? = null
+
+    private fun visibleKeyOrder(s: BrowserUiState): List<String> =
+        if (s.viewMode == ViewMode.LIST) {
+            s.listRows.map { it.entry.path.key }
+        } else {
+            s.entries.map { it.path.key }
+        }
+
+    /** ラバーバンド選択（SPEC §6.2）: 選択を置き換える。選択モードには入らない（Finder 同様） */
+    fun setSelectionByMarquee(keys: Set<String>) {
+        val s = _state.value
+        if (s.renamingKey != null || s.isArchive) return
+        if (s.selection != keys) {
+            _state.value = s.copy(selection = keys)
+        }
+        // 直後の Shift+クリックが自然につながるよう、範囲選択の起点も更新する
+        tapAnchorKey = visibleKeyOrder(s).firstOrNull { it in keys } ?: tapAnchorKey
     }
 
     fun onEntryDoubleTap(entry: FsEntry) {
@@ -537,8 +593,15 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         if (s.renamingKey != null || s.isArchive) return
         val key = entry.path.key
         when {
+            // 選択モード外でもマーキー/Ctrl+クリックによる複数選択があり得る。
+            // 押されたキーが選択済みならグループを維持したまま選択モードに入る
+            //（ドラッグ開始の前段。単独置換すると他の選択対象が抜け落ちてしまう）
             !s.selectionMode ->
-                _state.value = s.copy(selectionMode = true, selection = setOf(key))
+                _state.value = if (key in s.selection) {
+                    s.copy(selectionMode = true)
+                } else {
+                    s.copy(selectionMode = true, selection = setOf(key))
+                }
             key !in s.selection ->
                 _state.value = s.copy(selection = s.selection + key)
             // 選択済みへの長押しはドラッグ開始の前段なので選択を維持する

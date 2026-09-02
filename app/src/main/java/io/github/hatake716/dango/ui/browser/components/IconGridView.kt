@@ -63,55 +63,73 @@ fun IconGridView(
     pastedKeys: Set<String>,
     tagsByKey: Map<String, Set<String>>,
     hooks: EntryItemHooks,
-    onTap: (FsEntry) -> Unit,
+    onMarqueeSelect: (Set<String>) -> Unit,
+    onTap: (FsEntry, Boolean, Boolean) -> Unit,
     onDoubleTap: (FsEntry) -> Unit,
     onLongPress: (FsEntry) -> Unit,
     onPinchZoom: (Float) -> Unit,
     onCommitRename: (String, String) -> Unit,
     onCancelRename: () -> Unit,
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = (iconSizeDp + 26).dp),
+    // ラバーバンド選択（SPEC §6.2）: マウスの空白ドラッグで矩形選択
+    val marquee = rememberMarqueeState()
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            // 2本指のときだけズームを拾い、1本指スクロールは素通しする
-            .pointerInput(Unit) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    do {
-                        val event = awaitPointerEvent()
-                        if (event.changes.size >= 2) {
-                            val zoom = event.calculateZoom()
-                            if (zoom != 1f) {
-                                onPinchZoom(zoom)
-                                event.changes.forEach { it.consume() }
-                            }
-                        }
-                    } while (event.changes.any { it.pressed })
-                }
-            },
-        contentPadding = PaddingValues(8.dp),
+            .marqueeContainer(marquee)
+            .marqueeSelectSource(
+                marquee,
+                enabled = { renamingKey == null },
+                currentSelection = { selection },
+                onSelect = onMarqueeSelect,
+            ),
     ) {
-        items(entries, key = { it.path.key }) { entry ->
-            IconGridItem(
-                entry = entry,
-                selected = entry.path.key in selection,
-                iconSizeDp = iconSizeDp,
-                renaming = entry.path.key == renamingKey,
-                pulse = entry.path.key in pastedKeys,
-                tags = tagsByKey[entry.path.key] ?: emptySet(),
-                hooks = hooks,
-                onTap = onTap,
-                onDoubleTap = onDoubleTap,
-                onLongPress = onLongPress,
-                onCommitRename = onCommitRename,
-                onCancelRename = onCancelRename,
-                modifier = Modifier.animateItem(
-                    placementSpec = tween(250),
-                    fadeOutSpec = tween(300),
-                ),
-            )
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = (iconSizeDp + 26).dp),
+            modifier = Modifier
+                .fillMaxSize()
+                // 2本指のときだけズームを拾い、1本指スクロールは素通しする
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val event = awaitPointerEvent()
+                            if (event.changes.size >= 2) {
+                                val zoom = event.calculateZoom()
+                                if (zoom != 1f) {
+                                    onPinchZoom(zoom)
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
+                },
+            contentPadding = PaddingValues(8.dp),
+        ) {
+            items(entries, key = { it.path.key }) { entry ->
+                IconGridItem(
+                    entry = entry,
+                    selected = entry.path.key in selection,
+                    iconSizeDp = iconSizeDp,
+                    renaming = entry.path.key == renamingKey,
+                    pulse = entry.path.key in pastedKeys,
+                    tags = tagsByKey[entry.path.key] ?: emptySet(),
+                    hooks = hooks,
+                    onTap = onTap,
+                    onDoubleTap = onDoubleTap,
+                    onLongPress = onLongPress,
+                    onCommitRename = onCommitRename,
+                    onCancelRename = onCancelRename,
+                    modifier = Modifier
+                        .animateItem(
+                            placementSpec = tween(250),
+                            fadeOutSpec = tween(300),
+                        )
+                        .marqueeItemBounds(marquee, entry.path.key),
+                )
+            }
         }
+    MarqueeOverlay(marquee, DangoTheme.colors.selectionFocused, Modifier.matchParentSize())
     }
 }
 
@@ -125,7 +143,7 @@ private fun IconGridItem(
     pulse: Boolean,
     tags: Set<String>,
     hooks: EntryItemHooks,
-    onTap: (FsEntry) -> Unit,
+    onTap: (FsEntry, Boolean, Boolean) -> Unit,
     onDoubleTap: (FsEntry) -> Unit,
     onLongPress: (FsEntry) -> Unit,
     onCommitRename: (String, String) -> Unit,
@@ -135,6 +153,8 @@ private fun IconGridItem(
     val colors = DangoTheme.colors
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
+    // クリック時の修飾キー（Ctrl/Shift）は自分の down 時点で記録して onTap に添える
+    val clickMods = remember { ClickModifierState() }
     var dropHover by remember { mutableStateOf(false) }
     val key = entry.path.key
     // ドラッグ可否は場所（ゴミ箱・ネットワーク・アーカイブ等）で決まり、一覧内では安定
@@ -201,8 +221,9 @@ private fun IconGridItem(
                     with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) },
                 )
             }
+            .recordClickModifiers(clickMods)
             .combinedClickable(
-                onClick = { onTap(entry) },
+                onClick = { onTap(entry, clickMods.ctrl, clickMods.shift) },
                 onDoubleClick = { onDoubleTap(entry) },
                 // ドラッグ可能な文脈では onLongClick を使わない（consume されてドラッグが
                 // 始まらない）。ドラッグ不可の文脈ではドラッグ開始によるタッチキャンセルが

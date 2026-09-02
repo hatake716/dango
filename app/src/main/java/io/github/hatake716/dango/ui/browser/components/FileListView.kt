@@ -126,7 +126,8 @@ fun FileListView(
     sizeWidthDp: Int,
     kindWidthDp: Int,
     onSetColumnWidths: (Int, Int, Int) -> Unit,
-    onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onMarqueeSelect: (Set<String>) -> Unit,
+    onTap: (io.github.hatake716.dango.domain.model.FsEntry, Boolean, Boolean) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onLongPress: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onToggleExpand: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -161,31 +162,48 @@ fun FileListView(
         Column(modifier = Modifier.fillMaxSize()) {
             ListHeader(sort, onSetSortKey, widthsState, onSetColumnWidths)
             HorizontalDivider(color = colors.divider)
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                itemsIndexed(rows, key = { _, r -> r.entry.path.key }) { index, row ->
-                    ListRow(
-                        row = row,
-                        selected = row.entry.path.key in selection,
-                        isAlt = index % 2 == 1,
-                        renaming = row.entry.path.key == renamingKey,
-                        pulse = row.entry.path.key in pastedKeys,
-                        tags = tagsByKey[row.entry.path.key] ?: emptySet(),
-                        hooks = hooks,
-                        widths = widthsState,
-                        showExpander = showExpanders,
-                        onTap = onTap,
-                        onDoubleTap = onDoubleTap,
-                        onLongPress = onLongPress,
-                        onToggleExpand = onToggleExpand,
-                        onCommitRename = onCommitRename,
-                        onCancelRename = onCancelRename,
-                        modifier = Modifier.animateItem(
-                            placementSpec = tween(250),
-                            fadeInSpec = tween(180),
-                            fadeOutSpec = tween(300),
-                        ),
-                    )
+            // ラバーバンド選択（SPEC §6.2）: マウスの空白ドラッグで矩形選択
+            val marquee = rememberMarqueeState()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .marqueeContainer(marquee)
+                    .marqueeSelectSource(
+                        marquee,
+                        enabled = { renamingKey == null },
+                        currentSelection = { selection },
+                        onSelect = onMarqueeSelect,
+                    ),
+            ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    itemsIndexed(rows, key = { _, r -> r.entry.path.key }) { index, row ->
+                        ListRow(
+                            row = row,
+                            selected = row.entry.path.key in selection,
+                            isAlt = index % 2 == 1,
+                            renaming = row.entry.path.key == renamingKey,
+                            pulse = row.entry.path.key in pastedKeys,
+                            tags = tagsByKey[row.entry.path.key] ?: emptySet(),
+                            hooks = hooks,
+                            widths = widthsState,
+                            showExpander = showExpanders,
+                            onTap = onTap,
+                            onDoubleTap = onDoubleTap,
+                            onLongPress = onLongPress,
+                            onToggleExpand = onToggleExpand,
+                            onCommitRename = onCommitRename,
+                            onCancelRename = onCancelRename,
+                            modifier = Modifier
+                                .animateItem(
+                                    placementSpec = tween(250),
+                                    fadeInSpec = tween(180),
+                                    fadeOutSpec = tween(300),
+                                )
+                                .marqueeItemBounds(marquee, row.entry.path.key),
+                        )
+                    }
                 }
+                MarqueeOverlay(marquee, colors.selectionFocused, Modifier.matchParentSize())
             }
         }
     }
@@ -390,7 +408,7 @@ private fun ListRow(
     hooks: EntryItemHooks,
     widths: State<ListColumnWidths>,
     showExpander: Boolean,
-    onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
+    onTap: (io.github.hatake716.dango.domain.model.FsEntry, Boolean, Boolean) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onLongPress: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onToggleExpand: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -402,6 +420,8 @@ private fun ListRow(
     val entry = row.entry
     // 列幅はコンポーズでは読まない: 各セルの columnWidth（測定フェーズ）で State を
     // 読むため、ドラッグ中の幅変化は行の再コンポーズなしにレイアウトへ直接伝わる
+    // クリック時の修飾キー（Ctrl/Shift）は自分の down 時点で記録して onTap に添える
+    val clickMods = remember { ClickModifierState() }
     val background by animateColorAsState(
         targetValue = when {
             selected -> colors.selectionFocused
@@ -474,8 +494,9 @@ private fun ListRow(
                     with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) },
                 )
             }
+            .recordClickModifiers(clickMods)
             .combinedClickable(
-                onClick = { onTap(entry) },
+                onClick = { onTap(entry, clickMods.ctrl, clickMods.shift) },
                 onDoubleClick = { onDoubleTap(entry) },
                 // ドラッグ可否での使い分けは IconGridView と同じ理由
                 onLongClick = if (canDrag) {
