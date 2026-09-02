@@ -25,20 +25,21 @@ data class CloudLink(
     val icon: ImageVector,
 )
 
+// 表示はアルファベット順（追加時もこの順序を保つこと）
 val CLOUD_LINKS: List<CloudLink> = listOf(
-    CloudLink(
-        id = "gdrive",
-        labelRes = R.string.cloud_gdrive,
-        packageName = "com.google.android.apps.docs",
-        webUrl = "https://drive.google.com",
-        icon = Icons.Outlined.AddToDrive,
-    ),
     CloudLink(
         id = "dropbox",
         labelRes = R.string.cloud_dropbox,
         packageName = "com.dropbox.android",
         webUrl = "https://www.dropbox.com",
         icon = Icons.Outlined.Cloud,
+    ),
+    CloudLink(
+        id = "gdrive",
+        labelRes = R.string.cloud_gdrive,
+        packageName = "com.google.android.apps.docs",
+        webUrl = "https://drive.google.com",
+        icon = Icons.Outlined.AddToDrive,
     ),
     CloudLink(
         id = "gphotos",
