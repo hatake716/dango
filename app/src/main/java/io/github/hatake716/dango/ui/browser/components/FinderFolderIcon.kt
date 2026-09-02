@@ -25,8 +25,8 @@ val FinderFolder: ImageVector by lazy {
         path(
             fill = Brush.linearGradient(
                 colorStops = arrayOf(
-                    0f to Color(0xFF58A8F1),
-                    1f to Color(0xFF428BE2),
+                    0f to Color(0xFF4796E9),
+                    1f to Color(0xFF3477D3),
                 ),
                 start = Offset(0f, 4.7f),
                 end = Offset(0f, 19.5f),
@@ -51,8 +51,8 @@ val FinderFolder: ImageVector by lazy {
         path(
             fill = Brush.linearGradient(
                 colorStops = arrayOf(
-                    0f to Color(0xFF7AC6FB),
-                    1f to Color(0xFF4A97EE),
+                    0f to Color(0xFF66B5F7),
+                    1f to Color(0xFF3B84E5),
                 ),
                 start = Offset(0f, 7.4f),
                 end = Offset(0f, 19.5f),
