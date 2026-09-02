@@ -226,7 +226,11 @@ private fun IconGridItem(
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onLongPress(entry)
                         }
-                        .entryDragSource {
+                        .entryDragSource(
+                            // マウスは長押しを経ないため、ここで選択を整えて
+                            // 表示とペイロードを一致させる（Finder 同様の単独選択切替）
+                            onMouseDragStart = { hooks.selectForDrag(entry) },
+                        ) {
                             hooks.dragKeysFor(entry)?.also { hooks.onDragStart(it) }
                         }
                 } else {

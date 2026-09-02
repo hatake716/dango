@@ -22,6 +22,12 @@ class EntryItemHooks(
     /** このエントリをドラッグできるか（選択済みのもののみ） */
     val dragKeysFor: (FsEntry) -> Set<String>?,
     val onDragStart: (Set<String>) -> Unit,
+    /**
+     * マウスのプレス＋ムーブでドラッグが始まる直前の選択整合。
+     * Finder 同様「未選択項目のドラッグはその項目の単独選択に切り替える」
+     * （選択済み項目なら選択集合ごと運ぶので何もしない）
+     */
+    val selectForDrag: (FsEntry) -> Unit,
     /** このエントリがドロップ先になれるか（実フォルダのみ） */
     val dropEnabled: (FsEntry) -> Boolean,
     val onDropInto: (Set<String>, FsEntry) -> Unit,
@@ -37,6 +43,7 @@ class EntryItemHooks(
             contextMenuContent = {},
             dragKeysFor = { null },
             onDragStart = {},
+            selectForDrag = {},
             dropEnabled = { false },
             onDropInto = { _, _ -> },
         )

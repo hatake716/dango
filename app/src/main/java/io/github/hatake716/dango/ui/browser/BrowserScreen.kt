@@ -538,13 +538,22 @@ private fun MainPane(
                 s.isTrash || s.isArchive || s.isNetwork -> null
                 // 制限フォルダ（Android/data 等）は移動できないのでドラッグ自体を始めない
                 entry.isRestricted -> null
-                // 未選択アイテムの長押しドラッグは選択に加えてまとめて運ぶ
-                //（onEntryLongPress の追加とどちらが先に走っても同じペイロードになる）
                 entry.path.key in s.selection -> s.selection
-                else -> s.selection + entry.path.key
+                // 未選択アイテムの長押しドラッグ: onEntryLongPress と同じ規則で選択を
+                // 先読みする（選択モード中は追加、外では単独選択に置換）。これで
+                // onEntryLongPress とどちらが先に走っても同じペイロードになる
+                s.selectionMode -> s.selection + entry.path.key
+                else -> setOf(entry.path.key)
             }
         },
         onDragStart = onDragStart,
+        selectForDrag = { entry ->
+            // マウスドラッグ開始時の選択整合（Finder 同様）。未選択項目のドラッグは
+            // その項目の単独選択に切り替える。選択済みなら選択集合ごと運ぶので触らない
+            if (entry.path.key !in viewModel.state.value.selection) {
+                viewModel.selectOnly(entry)
+            }
+        },
         dropEnabled = { entry ->
             !state.isTrash && !state.isArchive && entry.isDir && !entry.isRestricted &&
                 entry.path.key !in draggingKeys
