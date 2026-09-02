@@ -95,6 +95,10 @@ data class BrowserUiState(
     val sort: SortSpec = SortSpec(),
     val showHidden: Boolean = false,
     val iconSizeDp: Int = 76,
+    /** リスト表示の列幅（SPEC §4.4 列カスタマイズ。名前列は残り幅） */
+    val listDateWidthDp: Int = 128,
+    val listSizeWidthDp: Int = 76,
+    val listKindWidthDp: Int = 112,
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val navDirection: NavDirection = NavDirection.JUMP,
@@ -230,11 +234,19 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
                 // ツリー展開中の子行も「見えている」ので選択の整合判定に含める
                 val visibleKeys = rows.mapTo(mutableSetOf()) { it.entry.path.key } +
                     visible.map { it.path.key }
-                _state.value = _state.value.copy(
+                // ドラッグ・ピンチ由来の値はデバウンス永続化が保留中の間、settings の
+                // 古い値で巻き戻さない（別の設定書き込みが窓内に emit してくる場合がある）
+                val cur = _state.value
+                val colsPending = colWidthsPersistJob?.isActive == true
+                val iconPending = iconSizePersistJob?.isActive == true
+                _state.value = cur.copy(
                     viewMode = s.viewMode,
                     sort = s.sort,
                     showHidden = s.showHidden,
-                    iconSizeDp = s.iconSizeDp,
+                    iconSizeDp = if (iconPending) cur.iconSizeDp else s.iconSizeDp,
+                    listDateWidthDp = if (colsPending) cur.listDateWidthDp else s.listDateWidthDp,
+                    listSizeWidthDp = if (colsPending) cur.listSizeWidthDp else s.listSizeWidthDp,
+                    listKindWidthDp = if (colsPending) cur.listKindWidthDp else s.listKindWidthDp,
                     entries = visible,
                     listRows = rows,
                     selection = _state.value.selection intersect visibleKeys,
@@ -1367,6 +1379,27 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         iconSizePersistJob = viewModelScope.launch {
             delay(400)
             settingsRepo.setIconSizeDp(next)
+        }
+    }
+
+    private var colWidthsPersistJob: Job? = null
+
+    /** リスト列幅のドラッグ変更（SPEC §4.4 列カスタマイズ。即時反映、永続化はデバウンス） */
+    fun setListColumnWidths(dateDp: Int, sizeDp: Int, kindDp: Int) {
+        val s = _state.value
+        if (s.listDateWidthDp != dateDp || s.listSizeWidthDp != sizeDp ||
+            s.listKindWidthDp != kindDp
+        ) {
+            _state.value = s.copy(
+                listDateWidthDp = dateDp,
+                listSizeWidthDp = sizeDp,
+                listKindWidthDp = kindDp,
+            )
+        }
+        colWidthsPersistJob?.cancel()
+        colWidthsPersistJob = viewModelScope.launch {
+            delay(400)
+            settingsRepo.setListColumnWidths(dateDp, sizeDp, kindDp)
         }
     }
 

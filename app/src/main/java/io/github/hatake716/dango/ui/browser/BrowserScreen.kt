@@ -831,6 +831,10 @@ private fun ContentArea(
                     FileListView(
                         rows = paneState.listRows,
                         selection = paneState.selection,
+                        dateWidthDp = paneState.listDateWidthDp,
+                        sizeWidthDp = paneState.listSizeWidthDp,
+                        kindWidthDp = paneState.listKindWidthDp,
+                        onSetColumnWidths = viewModel::setListColumnWidths,
                         sort = paneState.sort,
                         renamingKey = paneState.renamingKey,
                         pastedKeys = paneState.pastedKeys,

@@ -9,14 +9,21 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +41,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -45,6 +54,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -52,7 +62,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -64,12 +76,21 @@ import io.github.hatake716.dango.ui.theme.DangoTheme
 import io.github.hatake716.dango.ui.util.formatDateTime
 import io.github.hatake716.dango.ui.util.formatSize
 import io.github.hatake716.dango.ui.util.kindLabel
+import kotlin.math.roundToInt
 
-private val DATE_WIDTH = 128.dp
-private val SIZE_WIDTH = 76.dp
-private val KIND_WIDTH = 112.dp
+// 列幅の下限（ヘッダ境界のドラッグで再配分する。名前列は残り幅）
+private val MIN_NAME_WIDTH = 64.dp
+private val MIN_DATE_WIDTH = 56.dp
+private val MIN_SIZE_WIDTH = 40.dp
+private val MIN_KIND_WIDTH = 48.dp
 
-/** リスト表示（SPEC §4.4: ▸ でツリー展開。列カスタマイズは M5） */
+/** 列幅の上限。SettingsRepository の永続化クランプと必ず一致させること */
+private val MAX_COL_WIDTH = 400.dp
+
+/** 列境界ドラッグハンドルのタッチ幅 */
+private val HANDLE_WIDTH = 18.dp
+
+/** リスト表示（SPEC §4.4: ▸ でツリー展開、列幅はヘッダ境界のドラッグで調整） */
 @Composable
 fun FileListView(
     rows: List<TreeRow>,
@@ -79,6 +100,10 @@ fun FileListView(
     pastedKeys: Set<String>,
     tagsByKey: Map<String, Set<String>>,
     hooks: EntryItemHooks,
+    dateWidthDp: Int,
+    sizeWidthDp: Int,
+    kindWidthDp: Int,
+    onSetColumnWidths: (Int, Int, Int) -> Unit,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onLongPress: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -89,32 +114,53 @@ fun FileListView(
     showExpanders: Boolean,
 ) {
     val colors = DangoTheme.colors
-    Column(modifier = Modifier.fillMaxSize()) {
-        ListHeader(sort, onSetSortKey)
-        HorizontalDivider(color = colors.divider)
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            itemsIndexed(rows, key = { _, r -> r.entry.path.key }) { index, row ->
-                ListRow(
-                    row = row,
-                    selected = row.entry.path.key in selection,
-                    isAlt = index % 2 == 1,
-                    renaming = row.entry.path.key == renamingKey,
-                    pulse = row.entry.path.key in pastedKeys,
-                    tags = tagsByKey[row.entry.path.key] ?: emptySet(),
-                    hooks = hooks,
-                    showExpander = showExpanders,
-                    onTap = onTap,
-                    onDoubleTap = onDoubleTap,
-                    onLongPress = onLongPress,
-                    onToggleExpand = onToggleExpand,
-                    onCommitRename = onCommitRename,
-                    onCancelRename = onCancelRename,
-                    modifier = Modifier.animateItem(
-                        placementSpec = tween(250),
-                        fadeInSpec = tween(180),
-                        fadeOutSpec = tween(300),
-                    ),
-                )
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // 保存された列幅が現在のペイン幅に収まらない場合（横画面で広げて縦に戻した等）は
+        // 描画用に日付→サイズ→種類の順で最小値まで縮めて収める。ハンドル位置・ドラッグの
+        // 基準も同じ実効値を使うので、次のドラッグで収まる値が保存され自己修復する
+        var dateWidth = dateWidthDp.dp
+        var sizeWidth = sizeWidthDp.dp
+        var kindWidth = kindWidthDp.dp
+        val available = maxWidth - 16.dp - MIN_NAME_WIDTH
+        val over = (dateWidth + sizeWidth + kindWidth) - available
+        if (over > 0.dp) {
+            val dCut = minOf(over, dateWidth - MIN_DATE_WIDTH).coerceAtLeast(0.dp)
+            dateWidth -= dCut
+            val sCut = minOf(over - dCut, sizeWidth - MIN_SIZE_WIDTH).coerceAtLeast(0.dp)
+            sizeWidth -= sCut
+            val kCut = minOf(over - dCut - sCut, kindWidth - MIN_KIND_WIDTH).coerceAtLeast(0.dp)
+            kindWidth -= kCut
+        }
+        Column(modifier = Modifier.fillMaxSize()) {
+            ListHeader(sort, onSetSortKey, dateWidth, sizeWidth, kindWidth, onSetColumnWidths)
+            HorizontalDivider(color = colors.divider)
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                itemsIndexed(rows, key = { _, r -> r.entry.path.key }) { index, row ->
+                    ListRow(
+                        row = row,
+                        selected = row.entry.path.key in selection,
+                        isAlt = index % 2 == 1,
+                        renaming = row.entry.path.key == renamingKey,
+                        pulse = row.entry.path.key in pastedKeys,
+                        tags = tagsByKey[row.entry.path.key] ?: emptySet(),
+                        hooks = hooks,
+                        dateWidth = dateWidth,
+                        sizeWidth = sizeWidth,
+                        kindWidth = kindWidth,
+                        showExpander = showExpanders,
+                        onTap = onTap,
+                        onDoubleTap = onDoubleTap,
+                        onLongPress = onLongPress,
+                        onToggleExpand = onToggleExpand,
+                        onCommitRename = onCommitRename,
+                        onCancelRename = onCancelRename,
+                        modifier = Modifier.animateItem(
+                            placementSpec = tween(250),
+                            fadeInSpec = tween(180),
+                            fadeOutSpec = tween(300),
+                        ),
+                    )
+                }
             }
         }
     }
@@ -124,23 +170,139 @@ fun FileListView(
 private fun ListHeader(
     sort: SortSpec,
     onSetSortKey: (SortKey) -> Unit,
+    dateWidth: Dp,
+    sizeWidth: Dp,
+    kindWidth: Dp,
+    onSetColumnWidths: (Int, Int, Int) -> Unit,
 ) {
     val colors = DangoTheme.colors
-    Row(
+    val density = LocalDensity.current
+    var headerWidthPx by remember { mutableIntStateOf(0) }
+    // 各ハンドルにドラッグ開始時点の列幅（date/size/kind の dp）を渡す。
+    // 移動量は開始時からの累積で適用する（フレームごとの差分を Int に丸めると
+    // 1px 未満の動きが失われて追従しないため）
+    val currentWidths = { floatArrayOf(dateWidth.value, sizeWidth.value, kindWidth.value) }
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(28.dp)
             .background(colors.toolbar)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .onSizeChanged { headerWidthPx = it.width },
     ) {
-        HeaderCell(stringResource(R.string.col_name), SortKey.NAME, sort, onSetSortKey, Modifier.weight(1f))
-        HeaderCell(stringResource(R.string.col_date), SortKey.DATE, sort, onSetSortKey, Modifier.width(DATE_WIDTH))
-        HeaderCell(
-            stringResource(R.string.col_size), SortKey.SIZE, sort, onSetSortKey,
-            Modifier.width(SIZE_WIDTH), TextAlign.End,
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            HeaderCell(stringResource(R.string.col_name), SortKey.NAME, sort, onSetSortKey, Modifier.weight(1f))
+            HeaderCell(stringResource(R.string.col_date), SortKey.DATE, sort, onSetSortKey, Modifier.width(dateWidth))
+            HeaderCell(
+                stringResource(R.string.col_size), SortKey.SIZE, sort, onSetSortKey,
+                Modifier.width(sizeWidth), TextAlign.End,
+            )
+            HeaderCell(stringResource(R.string.col_kind), SortKey.KIND, sort, onSetSortKey, Modifier.width(kindWidth))
+        }
+        // 名前|変更日: 変更日の幅だけを変える（名前列が残りを吸収する）
+        ColumnResizeHandle(
+            boundaryFromRight = 8.dp + kindWidth + sizeWidth + dateWidth,
+            currentWidths = currentWidths,
+            onResize = { start, moved ->
+                // 名前列の最小幅を割らない範囲で変更日を広げられる。
+                // 上限は永続化側の MAX_COL_WIDTH とも揃える（超過分の書き戻しを防ぐ）
+                val totalDp = with(density) { headerWidthPx.toDp().value }
+                val maxDate = minOf(
+                    MAX_COL_WIDTH.value,
+                    totalDp - 16f - MIN_NAME_WIDTH.value - start[1] - start[2],
+                )
+                val newDate = (start[0] - moved)
+                    .coerceIn(MIN_DATE_WIDTH.value, maxOf(MIN_DATE_WIDTH.value, maxDate))
+                onSetColumnWidths(
+                    newDate.roundToInt(),
+                    start[1].roundToInt(),
+                    start[2].roundToInt(),
+                )
+            },
         )
-        HeaderCell(stringResource(R.string.col_kind), SortKey.KIND, sort, onSetSortKey, Modifier.width(KIND_WIDTH))
+        // 変更日|サイズ: 隣接2列で幅を再配分（境界が指に追従する）
+        ColumnResizeHandle(
+            boundaryFromRight = 8.dp + kindWidth + sizeWidth,
+            currentWidths = currentWidths,
+            onResize = { start, moved ->
+                val m = moved.coerceIn(
+                    maxOf(MIN_DATE_WIDTH.value - start[0], start[1] - MAX_COL_WIDTH.value),
+                    minOf(start[1] - MIN_SIZE_WIDTH.value, MAX_COL_WIDTH.value - start[0]),
+                )
+                onSetColumnWidths(
+                    (start[0] + m).roundToInt(),
+                    (start[1] - m).roundToInt(),
+                    start[2].roundToInt(),
+                )
+            },
+        )
+        // サイズ|種類
+        ColumnResizeHandle(
+            boundaryFromRight = 8.dp + kindWidth,
+            currentWidths = currentWidths,
+            onResize = { start, moved ->
+                val m = moved.coerceIn(
+                    maxOf(MIN_SIZE_WIDTH.value - start[1], start[2] - MAX_COL_WIDTH.value),
+                    minOf(start[2] - MIN_KIND_WIDTH.value, MAX_COL_WIDTH.value - start[1]),
+                )
+                onSetColumnWidths(
+                    start[0].roundToInt(),
+                    (start[1] + m).roundToInt(),
+                    (start[2] - m).roundToInt(),
+                )
+            },
+        )
+    }
+}
+
+/**
+ * 列境界のドラッグハンドル。境界に細い縦線を描き、左右ドラッグで列幅を調整する。
+ * onResize にはドラッグ開始時点の列幅スナップショットと、開始からの累積移動量
+ * （dp、右方向が正）を渡す。スナップショットはハンドルごとに独立して持つ
+ * （共有すると2本指で別ハンドルを同時に掴んだとき互いの基準値を壊す）
+ */
+@Composable
+private fun BoxScope.ColumnResizeHandle(
+    boundaryFromRight: Dp,
+    currentWidths: () -> FloatArray,
+    onResize: (FloatArray, Float) -> Unit,
+) {
+    val colors = DangoTheme.colors
+    val density = LocalDensity.current
+    val start = remember { floatArrayOf(0f, 0f, 0f) }
+    var movedDp by remember { mutableFloatStateOf(0f) }
+    Box(
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .offset { IntOffset(-(boundaryFromRight - HANDLE_WIDTH / 2).roundToPx(), 0) }
+            .width(HANDLE_WIDTH)
+            .fillMaxHeight()
+            // ヘッダ上の右クリックはセル同様ここでも握りつぶす
+            // （背景コンテキストメニューがヘッダ上で開かないように）
+            .swallowRightClick()
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = rememberDraggableState { deltaPx ->
+                    movedDp += with(density) { deltaPx.toDp().value }
+                    onResize(start, movedDp)
+                },
+                onDragStarted = {
+                    movedDp = 0f
+                    currentWidths().copyInto(start)
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(1.dp)
+                .height(14.dp)
+                .background(colors.divider),
+        )
     }
 }
 
@@ -193,6 +355,9 @@ private fun ListRow(
     pulse: Boolean,
     tags: Set<String>,
     hooks: EntryItemHooks,
+    dateWidth: Dp,
+    sizeWidth: Dp,
+    kindWidth: Dp,
     showExpander: Boolean,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -406,7 +571,7 @@ private fun ListRow(
             color = secondary,
             fontSize = 12.sp,
             maxLines = 1,
-            modifier = Modifier.width(DATE_WIDTH),
+            modifier = Modifier.width(dateWidth),
         )
         Text(
             text = if (entry.isDir) "–" else formatSize(entry.size),
@@ -414,7 +579,7 @@ private fun ListRow(
             fontSize = 12.sp,
             maxLines = 1,
             textAlign = TextAlign.End,
-            modifier = Modifier.width(SIZE_WIDTH),
+            modifier = Modifier.width(sizeWidth),
         )
         Spacer(Modifier.width(8.dp))
         Text(
@@ -423,7 +588,7 @@ private fun ListRow(
             fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(KIND_WIDTH - 8.dp),
+            modifier = Modifier.width(kindWidth - 8.dp),
         )
     }
 }

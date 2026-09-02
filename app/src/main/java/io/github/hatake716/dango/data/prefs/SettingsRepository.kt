@@ -38,6 +38,10 @@ data class Settings(
     val biometricLock: Boolean = false,
     /** ゴミ箱の自動削除日数（SPEC §6.6） */
     val trashAutoDays: Int = 30,
+    /** リスト表示の列幅（SPEC §4.4 列カスタマイズ。名前列は残り幅を使う） */
+    val listDateWidthDp: Int = 128,
+    val listSizeWidthDp: Int = 76,
+    val listKindWidthDp: Int = 112,
 )
 
 /** テーマ・表示設定の永続化（SPEC §8.1 data/prefs。フォルダごとの記憶は M1 以降で Room へ） */
@@ -63,11 +67,22 @@ class SettingsRepository(private val context: Context) {
                 dynamicColor = p[KEY_DYNAMIC_COLOR] ?: false,
                 biometricLock = p[KEY_BIOMETRIC] ?: false,
                 trashAutoDays = p[KEY_TRASH_DAYS] ?: 30,
+                listDateWidthDp = (p[KEY_LIST_DATE_W] ?: 128).coerceIn(56, 400),
+                listSizeWidthDp = (p[KEY_LIST_SIZE_W] ?: 76).coerceIn(40, 400),
+                listKindWidthDp = (p[KEY_LIST_KIND_W] ?: 112).coerceIn(48, 400),
             )
         }
 
     suspend fun setIconSizeDp(size: Int) {
         context.dataStore.edit { it[KEY_ICON_SIZE] = size.coerceIn(48, 256) }
+    }
+
+    suspend fun setListColumnWidths(dateDp: Int, sizeDp: Int, kindDp: Int) {
+        context.dataStore.edit {
+            it[KEY_LIST_DATE_W] = dateDp.coerceIn(56, 400)
+            it[KEY_LIST_SIZE_W] = sizeDp.coerceIn(40, 400)
+            it[KEY_LIST_KIND_W] = kindDp.coerceIn(48, 400)
+        }
     }
 
     suspend fun setSingleTapOpen(value: Boolean) {
@@ -133,6 +148,9 @@ class SettingsRepository(private val context: Context) {
         val KEY_SHOW_HIDDEN = booleanPreferencesKey("show_hidden")
         val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val KEY_ICON_SIZE = intPreferencesKey("icon_size_dp")
+        val KEY_LIST_DATE_W = intPreferencesKey("list_date_width_dp")
+        val KEY_LIST_SIZE_W = intPreferencesKey("list_size_width_dp")
+        val KEY_LIST_KIND_W = intPreferencesKey("list_kind_width_dp")
         val KEY_SINGLE_TAP = booleanPreferencesKey("single_tap_open")
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val KEY_BIOMETRIC = booleanPreferencesKey("biometric_lock")
