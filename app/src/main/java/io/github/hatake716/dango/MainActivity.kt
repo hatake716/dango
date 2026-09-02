@@ -245,8 +245,10 @@ class MainActivity : ComponentActivity() {
 
     /**
      * ACTION_VIEW（フォルダ）の URI をローカルの絶対パスへ解決する。
-     * file:// と externalstorage の document URI（primary ボリューム）、
-     * dango 自身の DocumentsProvider の URI に対応する
+     * file:// と externalstorage の document URI／tree URI（primary ボリューム）、
+     * dango 自身の DocumentsProvider の URI に対応する。
+     * tree URI は ohagi などが ACTION_OPEN_DOCUMENT_TREE で得たフォルダを
+     * そのまま渡してくる形式で、getDocumentId ではなく getTreeDocumentId が必要。
      */
     private fun folderPathFromViewIntent(intent: Intent?): String? {
         if (intent?.action != Intent.ACTION_VIEW) return null
@@ -257,7 +259,11 @@ class MainActivity : ComponentActivity() {
                 uri.scheme == "file" -> uri.path
                 uri.authority == "com.android.externalstorage.documents" ||
                     uri.authority == "$packageName.documents" -> {
-                    val docId = android.provider.DocumentsContract.getDocumentId(uri)
+                    val docId = if (android.provider.DocumentsContract.isTreeUri(uri)) {
+                        android.provider.DocumentsContract.getTreeDocumentId(uri)
+                    } else {
+                        android.provider.DocumentsContract.getDocumentId(uri)
+                    }
                     val parts = docId.split(":", limit = 2)
                     if (parts[0] == "primary") {
                         if (parts.size > 1 && parts[1].isNotEmpty()) "$base/${parts[1]}" else base
