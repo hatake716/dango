@@ -4,6 +4,13 @@
 
 ## 記録
 
+### 2026-09-02 — クラウドリンクに Google フォトを追加（SPEC §15 #9）
+
+- サイドバー「クラウド」に Google フォトのリンクを追加（Google ドライブ / Dropbox と
+  同じ方式: 公式アプリ→Play ストア→Web の順にフォールバック）。manifest の
+  `<queries>` にパッケージ可視性を追加
+- エミュレータ E2E: サイドバー表示・タップで公式アプリ起動を確認
+
 ### 2026-09-02 — Finder 風フォルダアイコン（SPEC §15 後回し項目「独自青フォルダ」）
 
 - Material Icons のフォルダを廃し、macOS Finder 風の独自ベクター（FinderFolderIcon.kt）に変更。

@@ -279,6 +279,7 @@
     <string name="sidebar_cloud">クラウド</string>
     <string name="cloud_gdrive">Google ドライブ</string>
     <string name="cloud_dropbox">Dropbox</string>
+    <string name="cloud_gphotos">Google フォト</string>
 
     <!-- 検索（M5。SPEC §6.7） -->
     <string name="cd_search">検索</string>

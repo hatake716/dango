@@ -30,6 +30,7 @@
     <queries>
         <package android:name="com.google.android.apps.docs" />
         <package android:name="com.dropbox.android" />
+        <package android:name="com.google.android.apps.photos" />
     </queries>
 
     <application

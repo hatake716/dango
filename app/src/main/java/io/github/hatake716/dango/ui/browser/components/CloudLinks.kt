@@ -8,6 +8,7 @@ import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddToDrive
 import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.hatake716.dango.R
 
@@ -38,6 +39,13 @@ val CLOUD_LINKS: List<CloudLink> = listOf(
         packageName = "com.dropbox.android",
         webUrl = "https://www.dropbox.com",
         icon = Icons.Outlined.Cloud,
+    ),
+    CloudLink(
+        id = "gphotos",
+        labelRes = R.string.cloud_gphotos,
+        packageName = "com.google.android.apps.photos",
+        webUrl = "https://photos.google.com",
+        icon = Icons.Outlined.PhotoLibrary,
     ),
 )
 
