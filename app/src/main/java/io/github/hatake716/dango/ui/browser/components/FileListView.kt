@@ -39,12 +39,14 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -90,6 +92,9 @@ private val MAX_COL_WIDTH = 400.dp
 /** 列境界ドラッグハンドルのタッチ幅 */
 private val HANDLE_WIDTH = 18.dp
 
+/** リスト列の実効幅（クランプ適用後） */
+private data class ListColumnWidths(val date: Dp, val size: Dp, val kind: Dp)
+
 /** リスト表示（SPEC §4.4: ▸ でツリー展開、列幅はヘッダ境界のドラッグで調整） */
 @Composable
 fun FileListView(
@@ -131,6 +136,11 @@ fun FileListView(
             val kCut = minOf(over - dCut - sCut, kindWidth - MIN_KIND_WIDTH).coerceAtLeast(0.dp)
             kindWidth -= kCut
         }
+        // 行へは snapshot state 経由で列幅を渡す。LazyColumn のアイテムは独立した
+        // 再コンポーズスコープで、キャプチャ値の変化（コンテンツラムダの再生成）による
+        // 伝播は環境によって働かず「ヘッダだけ動いて行が止まる」ことがあるため、
+        // 各行に State を読ませて確実にドラッグへ追従させる
+        val widthsState = rememberUpdatedState(ListColumnWidths(dateWidth, sizeWidth, kindWidth))
         Column(modifier = Modifier.fillMaxSize()) {
             ListHeader(sort, onSetSortKey, dateWidth, sizeWidth, kindWidth, onSetColumnWidths)
             HorizontalDivider(color = colors.divider)
@@ -144,9 +154,7 @@ fun FileListView(
                         pulse = row.entry.path.key in pastedKeys,
                         tags = tagsByKey[row.entry.path.key] ?: emptySet(),
                         hooks = hooks,
-                        dateWidth = dateWidth,
-                        sizeWidth = sizeWidth,
-                        kindWidth = kindWidth,
+                        widths = widthsState,
                         showExpander = showExpanders,
                         onTap = onTap,
                         onDoubleTap = onDoubleTap,
@@ -355,9 +363,7 @@ private fun ListRow(
     pulse: Boolean,
     tags: Set<String>,
     hooks: EntryItemHooks,
-    dateWidth: Dp,
-    sizeWidth: Dp,
-    kindWidth: Dp,
+    widths: State<ListColumnWidths>,
     showExpander: Boolean,
     onTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
     onDoubleTap: (io.github.hatake716.dango.domain.model.FsEntry) -> Unit,
@@ -369,6 +375,8 @@ private fun ListRow(
 ) {
     val colors = DangoTheme.colors
     val entry = row.entry
+    // ここで State を読むことでこの行の再コンポーズスコープが列幅の変化を購読する
+    val (dateWidth, sizeWidth, kindWidth) = widths.value
     val background by animateColorAsState(
         targetValue = when {
             selected -> colors.selectionFocused
