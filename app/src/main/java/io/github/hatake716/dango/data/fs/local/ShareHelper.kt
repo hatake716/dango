@@ -16,6 +16,12 @@ object ShareHelper {
     private fun contentUri(context: Context, entry: FsEntry): Uri =
         FileProvider.getUriForFile(context, authority(context), File(entry.path.displayPath()))
 
+    /** ピッカー（ACTION_GET_CONTENT）の返却結果用 Intent。読み取り許可付きの content URI */
+    fun pickResultIntent(context: Context, entry: FsEntry): Intent =
+        Intent()
+            .setDataAndType(contentUri(context, entry), mimeType(entry))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
     fun mimeType(entry: FsEntry): String {
         val ext = entry.extension
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"

@@ -72,8 +72,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // 他アプリからの起動モード（SPEC §15 #11）
+        val picking = intent?.action == Intent.ACTION_GET_CONTENT
+        val viewFolder = folderPathFromViewIntent(intent)
         setContent {
             val viewModel: BrowserViewModel = viewModel()
+            LaunchedEffect(Unit) {
+                viewModel.pickerMode = picking
+                if (savedInstanceState == null && viewFolder != null) {
+                    viewModel.openAbsoluteFolder(viewFolder)
+                }
+            }
             // DataStore の実値が届くまでは null。既定値で誤った画面（オンボーディング等）を
             // 一瞬描画しないよう、null の間は背景のみ表示する
             val settings = viewModel.settings.collectAsState().value
@@ -232,6 +241,33 @@ class MainActivity : ComponentActivity() {
             android.util.Log.d("dango", "biometric prompt failed: $e")
             onSuccess()
         }
+    }
+
+    /**
+     * ACTION_VIEW（フォルダ）の URI をローカルの絶対パスへ解決する。
+     * file:// と externalstorage の document URI（primary ボリューム）、
+     * dango 自身の DocumentsProvider の URI に対応する
+     */
+    private fun folderPathFromViewIntent(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_VIEW) return null
+        val uri = intent.data ?: return null
+        val base = Environment.getExternalStorageDirectory().absolutePath
+        return runCatching {
+            when {
+                uri.scheme == "file" -> uri.path
+                uri.authority == "com.android.externalstorage.documents" ||
+                    uri.authority == "$packageName.documents" -> {
+                    val docId = android.provider.DocumentsContract.getDocumentId(uri)
+                    val parts = docId.split(":", limit = 2)
+                    if (parts[0] == "primary") {
+                        if (parts.size > 1 && parts[1].isNotEmpty()) "$base/${parts[1]}" else base
+                    } else {
+                        null
+                    }
+                }
+                else -> null
+            }
+        }.getOrNull()
     }
 
     private fun openFullAccessSettings() {

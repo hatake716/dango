@@ -48,12 +48,41 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- フォルダを dango で開く（他アプリ・ランチャーからの ACTION_VIEW） -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="resource/folder" />
+                <data android:mimeType="vnd.android.document/directory" />
+                <data android:mimeType="inode/directory" />
+            </intent-filter>
+            <!-- ファイル選択のピッカーとして振る舞う（ACTION_GET_CONTENT） -->
+            <intent-filter>
+                <action android:name="android.intent.action.GET_CONTENT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.OPENABLE" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <service
             android:name=".service.TransferService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- システムのファイルピッカー（ACTION_OPEN_DOCUMENT 等）に dango を載せる。
+             OPEN_DOCUMENT はシステムピッカー専用のためアプリが直接受けることはできず、
+             DocumentsProvider として統合する -->
+        <provider
+            android:name=".data.fs.local.DangoDocumentsProvider"
+            android:authorities="${applicationId}.documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
 
         <!-- 共有 / 別のアプリで開く（SPEC §6.3: FileProvider 経由） -->
         <provider

@@ -149,6 +149,18 @@ fun BrowserScreen(
                     runCatching {
                         context.startActivity(ShareHelper.shareIntent(context, event.entries))
                     }
+                is BrowserEvent.PickResult -> {
+                    // ピッカーモード（ACTION_GET_CONTENT）: 選ばれたファイルを返して終了
+                    (context as? android.app.Activity)?.let { activity ->
+                        runCatching {
+                            activity.setResult(
+                                android.app.Activity.RESULT_OK,
+                                ShareHelper.pickResultIntent(context, event.entry),
+                            )
+                            activity.finish()
+                        }
+                    }
+                }
                 is BrowserEvent.OpenWith ->
                     runCatching {
                         context.startActivity(ShareHelper.openWithIntent(context, event.entry))

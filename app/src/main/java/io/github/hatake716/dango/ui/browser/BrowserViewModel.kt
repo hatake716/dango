@@ -81,6 +81,8 @@ sealed interface BrowserEvent {
     data class TrashDone(val count: Int, val undoIds: List<Long>) : BrowserEvent
     data class Share(val entries: List<FsEntry>) : BrowserEvent
     data class OpenWith(val entry: FsEntry) : BrowserEvent
+    /** ピッカーモード（ACTION_GET_CONTENT）でファイルが選ばれた */
+    data class PickResult(val entry: FsEntry) : BrowserEvent
 }
 
 data class BrowserUiState(
@@ -572,6 +574,11 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             s.entries.map { it.path.key }
         }
 
+    /** 他アプリからの ACTION_VIEW（フォルダ）で指定パスを開く */
+    fun openAbsoluteFolder(absolutePath: String) {
+        navigateTo(LocalFileSystemProvider.fromAbsolutePath(absolutePath), NavDirection.JUMP)
+    }
+
     /** 空白の左クリックによる選択解除（SPEC §6.2。Finder の空白クリック相当） */
     fun clearSelectionOnBackgroundClick() {
         val s = _state.value
@@ -682,9 +689,15 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         return pool.filter { it.path.key in s.selection }
     }
 
+    /** ACTION_GET_CONTENT で起動されたピッカーモード（MainActivity が設定する） */
+    var pickerMode: Boolean = false
+
     private fun open(entry: FsEntry) {
         when {
             entry.isRestricted -> _events.trySend(BrowserEvent.Message(R.string.restricted_folder))
+            // ピッカーモード: ローカルファイルは開かずに呼び出し元へ返す
+            pickerMode && !entry.isDir && entry.path.scheme == "file" ->
+                _events.trySend(BrowserEvent.PickResult(entry))
             entry.isDir && !_state.value.isTrash -> navigateTo(entry.path, NavDirection.FORWARD)
             entry.isDir -> _events.trySend(BrowserEvent.Message(R.string.trash_folder_preview))
             ArchivePaths.isArchivePath(entry.path) -> previewArchiveEntry(entry)

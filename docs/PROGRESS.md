@@ -4,6 +4,24 @@
 
 ## 記録
 
+### 2026-09-02 — システム統合: ACTION_VIEW / GET_CONTENT / DocumentsProvider（SPEC §15 #11）
+
+- **ACTION_VIEW（フォルダ）**: intent-filter（resource/folder ほか）を登録し、file:// と
+  externalstorage / 自前プロバイダの document URI をローカルパスへ解決して該当フォルダで起動
+- **ACTION_GET_CONTENT**: dango をファイルピッカーとして選べる。ピッカーモードでは
+  ファイルを開く操作が「選択して返す」になり、FileProvider の content URI
+  （読み取り許可付き）を setResult して終了。通常起動の挙動（Quick Look）は不変
+- **ACTION_OPEN_DOCUMENT**: このインテントはシステムピッカー専用で第三者アプリは
+  直接受けられないため、DangoDocumentsProvider（内部ストレージを公開する
+  DocumentsProvider）として統合。システムピッカーのサイドバーに dango ルートが載る。
+  query/open/create/delete/rename/isChild を実装、docId のパストラバーサル防止付き。
+  アクセスはシステム（MANAGE_DOCUMENTS）が仲介
+- E2E: ACTION_VIEW でフォルダ起動 / GET_CONTENT リゾルバ登録＋選択→終了 /
+  システムピッカーに dango ルート表示＋内部ストレージの列挙 / 通常起動の非回帰。
+  検証時の教訓: adb shell へ渡す `*/*` は端末側シェルでグロブ展開されるためクォート必須
+- 未対応（今後）: GET_CONTENT の EXTRA_ALLOW_MULTIPLE（複数返却）、mime type での
+  一覧フィルタ、ACTION_VIEW でのファイル直接プレビュー、DocumentsProvider のサムネイル
+
 ### 2026-09-02 — 空白の左クリックで選択解除（SPEC §6.2 追補）
 
 - 空白領域の左クリック（マウス・修飾キーなし・ドラッグに至らなかった場合）で選択を解除。
