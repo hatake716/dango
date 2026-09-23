@@ -5,14 +5,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.outlined.InsertDriveFile
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,7 +24,10 @@ import io.github.hatake716.dango.R
 import io.github.hatake716.dango.data.archive.ArchiveEntryMeta
 import io.github.hatake716.dango.data.archive.ArchiveIndex
 import io.github.hatake716.dango.data.archive.ArchivePasswordException
+import io.github.hatake716.dango.data.fs.local.LocalFileSystemProvider
+import io.github.hatake716.dango.domain.model.EntryKind
 import io.github.hatake716.dango.domain.model.FsEntry
+import io.github.hatake716.dango.ui.browser.components.EntryKindIcon
 import io.github.hatake716.dango.ui.util.formatSize
 
 private const val MAX_ROWS = 5000
@@ -93,21 +91,22 @@ private fun ArchiveTree(index: ArchiveIndex) {
 @Composable
 private fun ArchiveRow(meta: ArchiveEntryMeta) {
     val depth = meta.segments.size - 1
+    val name = meta.segments.last()
+    val kind = if (meta.isDir) {
+        EntryKind.FOLDER
+    } else {
+        LocalFileSystemProvider.kindOfExtension(name.substringAfterLast('.', "").lowercase())
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = (16 + depth * 16).dp, end = 16.dp, top = 3.dp, bottom = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = if (meta.isDir) Icons.Filled.Folder else Icons.Outlined.InsertDriveFile,
-            contentDescription = null,
-            tint = if (meta.isDir) Color(0xFF5AA1F2) else Color.White.copy(alpha = 0.55f),
-            modifier = Modifier.size(15.dp),
-        )
+        EntryKindIcon(kind = kind, name = name, size = 16.dp)
         Spacer(Modifier.width(6.dp))
         Text(
-            text = meta.segments.last(),
+            text = name,
             color = Color.White.copy(alpha = 0.9f),
             fontSize = 12.sp,
             maxLines = 1,
