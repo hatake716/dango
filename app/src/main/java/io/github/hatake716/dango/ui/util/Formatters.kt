@@ -44,6 +44,28 @@ fun formatDateTime(millis: Long): String {
     return dateTimeFormat.format(Date(millis))
 }
 
+/** API レベル → Android のバージョン表記（APK の最小/対象 Android 表示用） */
+fun androidVersionName(api: Int): String = when (api) {
+    21 -> "5.0"
+    22 -> "5.1"
+    23 -> "6"
+    24 -> "7.0"
+    25 -> "7.1"
+    26 -> "8.0"
+    27 -> "8.1"
+    28 -> "9"
+    29 -> "10"
+    30 -> "11"
+    31 -> "12"
+    32 -> "12L"
+    33 -> "13"
+    34 -> "14"
+    35 -> "15"
+    36 -> "16"
+    37 -> "17"
+    else -> "API $api"
+}
+
 /** Finder の「種類」列相当のラベル（多言語化は M6 で対応） */
 fun kindLabel(entry: FsEntry): String {
     if (entry.isDir) return "フォルダ"

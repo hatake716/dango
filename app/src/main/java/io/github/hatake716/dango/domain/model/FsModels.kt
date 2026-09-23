@@ -76,7 +76,8 @@ data class ConflictChoice(
     val applyToAll: Boolean,
 )
 
-/** Quick Look で表示できる種別（SPEC §6.5。フォント・アーカイブ・APK は M3 以降） */
+/** Quick Look で専用ページを持つ種別（SPEC §6.5。それ以外は汎用ページ） */
 val PREVIEWABLE_KINDS = setOf(
     EntryKind.IMAGE, EntryKind.VIDEO, EntryKind.AUDIO, EntryKind.PDF, EntryKind.TEXT,
+    EntryKind.ARCHIVE, EntryKind.APK,
 )

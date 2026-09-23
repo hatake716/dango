@@ -43,6 +43,11 @@ fun QuickLookHost(
     onOpenWith: (FsEntry) -> Unit,
     onInfo: (FsEntry) -> Unit,
     onNotify: (Int) -> Unit,
+    loadApkInfo: suspend (FsEntry) -> io.github.hatake716.dango.data.apk.ApkInfo,
+    apkInstallState: io.github.hatake716.dango.data.apk.ApkInstallState,
+    onInstallApk: (FsEntry, String?) -> Unit,
+    onCancelApkInstall: () -> Unit,
+    onLaunchApp: (String) -> Unit,
 ) {
     val colors = DangoTheme.colors
     val pagerState = rememberPagerState(initialPage = index) { files.size }
@@ -126,6 +131,14 @@ fun QuickLookHost(
                     EntryKind.ARCHIVE -> ArchivePage(
                         entry = entry,
                         loadIndex = loadArchiveIndex,
+                    )
+                    EntryKind.APK -> ApkPage(
+                        entry = entry,
+                        loadInfo = loadApkInfo,
+                        installState = apkInstallState,
+                        onInstall = onInstallApk,
+                        onCancel = onCancelApkInstall,
+                        onOpenApp = onLaunchApp,
                     )
                     else -> OtherPage(entry = entry, onOpenWith = onOpenWith)
                 }

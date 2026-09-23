@@ -6,6 +6,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.hatake716.dango.DangoApp
 import io.github.hatake716.dango.R
+import android.content.pm.PackageInstaller
+import io.github.hatake716.dango.data.apk.ApkBlocker
+import io.github.hatake716.dango.data.apk.ApkInfo
+import io.github.hatake716.dango.data.apk.ApkInstallResult
 import io.github.hatake716.dango.data.archive.ArchiveError
 import io.github.hatake716.dango.data.archive.ArchiveFormat
 import io.github.hatake716.dango.data.archive.ArchivePasswordException
@@ -85,6 +89,11 @@ sealed interface BrowserEvent {
     data class OpenWith(val entry: FsEntry) : BrowserEvent
     /** ピッカーモード（ACTION_GET_CONTENT）でファイルが選ばれた */
     data class PickResult(val entry: FsEntry) : BrowserEvent
+    /** 「不明なアプリのインストール」の設定画面を開く（SPEC §11） */
+    data object OpenInstallPermissionSettings : BrowserEvent
+    /** APK のインストール完了（スナックバーの「開く」用） */
+    data class ApkInstalled(val packageName: String?, val label: String?) : BrowserEvent
+    data class LaunchApp(val packageName: String) : BrowserEvent
 }
 
 data class BrowserUiState(
@@ -147,7 +156,10 @@ data class BrowserUiState(
     val refreshTick: Int = 0,
 )
 
-class BrowserViewModel(app: Application) : AndroidViewModel(app) {
+class BrowserViewModel(
+    app: Application,
+    private val savedState: androidx.lifecycle.SavedStateHandle,
+) : AndroidViewModel(app) {
 
     private val container = (app as DangoApp).container
     private val registry = container.providerRegistry
@@ -161,6 +173,10 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     private val netPreviewCache = container.netPreviewCache
     val infoLoader = container.infoLoader
     val textFileStore = container.textFileStore
+    private val apkInspector = container.apkInspector
+    private val apkInstaller = container.apkInstaller
+    val apkInstallState = apkInstaller.state
+    val apkConfirmIntent = apkInstaller.pendingConfirm
 
     private fun providerFor(path: FsPath) = registry.forPath(path)
 
@@ -258,6 +274,7 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         navigateTo(internalRoot, NavDirection.JUMP, recordHistory = false)
+        viewModelScope.launch { apkInstaller.results.collect(::onApkInstallResult) }
     }
 
     // --- ナビゲーション（SPEC §6.1: 履歴最大50） ---
@@ -977,6 +994,15 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     // --- Quick Look（SPEC §6.5） ---
 
     fun openQuickLook(entry: FsEntry) {
+        // 右クリック・下部バーの「プレビュー」も、ページが読めるローカルの実体へ落としてから開く
+        if (!entry.isDir && NetPaths.isNetwork(entry.path)) {
+            previewNetworkEntry(entry)
+            return
+        }
+        if (!entry.isDir && ArchivePaths.isArchivePath(entry.path)) {
+            previewArchiveEntry(entry)
+            return
+        }
         val s = _state.value
         val pool = if (s.viewMode == ViewMode.LIST) s.listRows.map { it.entry } else s.entries
         val files = pool.filter { !it.isDir && !it.isRestricted }
@@ -1003,6 +1029,116 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
 
     fun closeQuickLook() {
         _state.value = _state.value.copy(quickLookIndex = null, quickLookFiles = emptyList())
+    }
+
+    // --- APK インストール（SPEC §6.5, §11） ---
+
+    /** Quick Look の APK ページ用（解析は data 層で行い、UI は File に触れない） */
+    suspend fun apkInfoFor(entry: FsEntry): ApkInfo = apkInspector.inspect(entry)
+
+    fun installApk(entry: FsEntry, packageName: String?) {
+        if (apkInstaller.isBlockedByPolicy()) {
+            notify(R.string.apk_policy_blocked)
+            return
+        }
+        if (!apkInstaller.canRequestInstalls()) {
+            // Android 11 は許可を切り替えるとプロセスごと落とすため、再開情報は SavedStateHandle に置く
+            savedState[PendingApkKeys.SCHEME] = entry.path.scheme
+            savedState[PendingApkKeys.SEGMENTS] = ArrayList(entry.path.segments)
+            savedState[PendingApkKeys.PACKAGE] = packageName
+            _events.trySend(BrowserEvent.OpenInstallPermissionSettings)
+            return
+        }
+        apkInstaller.install(entry, packageName)
+    }
+
+    /** 右クリックの「インストール」。進捗と取り消しを見せるため APK のページも開く */
+    fun installApkFromMenu(entry: FsEntry) {
+        openQuickLook(entry)
+        viewModelScope.launch {
+            val info = runCatching { apkInspector.inspect(entry) }.getOrNull() ?: return@launch
+            // インストールできない理由はページ側に表示される
+            if (info.blocker == ApkBlocker.NONE) installApk(entry, info.packageName)
+        }
+    }
+
+    /** 「不明なアプリのインストール」の設定から戻ったら続きを行う（ON_RESUME ごとに呼ばれる） */
+    fun onResumeCheckApkPermission() {
+        val scheme = savedState.get<String>(PendingApkKeys.SCHEME) ?: return
+        val segments = savedState.get<ArrayList<String>>(PendingApkKeys.SEGMENTS) ?: return
+        val packageName = savedState.get<String>(PendingApkKeys.PACKAGE)
+        clearPendingApk()
+        if (!apkInstaller.canRequestInstalls()) {
+            notify(R.string.apk_permission_denied)
+            return
+        }
+        val path = FsPath(scheme, segments)
+        viewModelScope.launch {
+            val entry = runCatching { providerFor(path).stat(path) }.getOrNull()
+            if (entry == null) {
+                notify(R.string.op_failed)
+                return@launch
+            }
+            // プロセスが作り直された場合は Quick Look が閉じているので、進捗を見せるため開き直す
+            if (_state.value.quickLookIndex == null) {
+                _state.value = _state.value.copy(quickLookFiles = listOf(entry), quickLookIndex = 0)
+            }
+            apkInstaller.install(entry, packageName)
+        }
+    }
+
+    fun onInstallPermissionSettingsUnavailable() {
+        clearPendingApk()
+        notify(R.string.apk_permission_denied)
+    }
+
+    private fun clearPendingApk() {
+        savedState.remove<String>(PendingApkKeys.SCHEME)
+        savedState.remove<ArrayList<String>>(PendingApkKeys.SEGMENTS)
+        savedState.remove<String>(PendingApkKeys.PACKAGE)
+    }
+
+    fun cancelApkInstall() = apkInstaller.cancel()
+
+    fun consumeApkConfirm() = apkInstaller.consumeConfirm()
+
+    fun onApkConfirmLaunchFailed() {
+        apkInstaller.cancel()
+        notify(R.string.apk_install_failed)
+    }
+
+    fun launchApp(packageName: String) {
+        _events.trySend(BrowserEvent.LaunchApp(packageName))
+    }
+
+    private fun onApkInstallResult(result: ApkInstallResult) {
+        when (result) {
+            is ApkInstallResult.Success -> _events.trySend(
+                BrowserEvent.ApkInstalled(
+                    packageName = result.packageName,
+                    label = result.packageName?.let(apkInstaller::appLabel),
+                ),
+            )
+            is ApkInstallResult.Failure ->
+                _events.trySend(BrowserEvent.Message(apkFailureRes(result.status)))
+        }
+    }
+
+    private fun apkFailureRes(status: Int): Int = when (status) {
+        PackageInstaller.STATUS_FAILURE_ABORTED -> R.string.apk_install_aborted
+        PackageInstaller.STATUS_FAILURE_BLOCKED -> R.string.apk_install_blocked
+        PackageInstaller.STATUS_FAILURE_INVALID -> R.string.apk_install_invalid
+        PackageInstaller.STATUS_FAILURE_CONFLICT -> R.string.apk_install_conflict
+        PackageInstaller.STATUS_FAILURE_STORAGE -> R.string.apk_install_storage
+        PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> R.string.apk_install_incompatible
+        PackageInstaller.STATUS_FAILURE_TIMEOUT -> R.string.apk_install_timeout
+        else -> R.string.apk_install_failed
+    }
+
+    private object PendingApkKeys {
+        const val SCHEME = "pendingApkScheme"
+        const val SEGMENTS = "pendingApkSegments"
+        const val PACKAGE = "pendingApkPackage"
     }
 
     // --- ファイル操作（SPEC §6.3） ---
