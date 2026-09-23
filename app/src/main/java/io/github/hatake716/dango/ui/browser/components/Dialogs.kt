@@ -1,23 +1,15 @@
 package io.github.hatake716.dango.ui.browser.components
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -32,40 +24,42 @@ import io.github.hatake716.dango.ui.theme.DangoTheme
 /** 同名衝突ダイアログ（SPEC §6.3: 両方残す / 置き換え / スキップ＋以降すべてに適用） */
 @Composable
 fun ConflictDialog(request: ConflictRequest) {
-    var applyToAll by remember { mutableStateOf(false) }
-    fun answer(resolution: ConflictResolution) {
-        request.response.complete(ConflictChoice(resolution, applyToAll))
+    // 次の衝突が続けて来たときは新しいダイアログとして出し直す
+    key(request) {
+        var applyToAll by remember { mutableStateOf(false) }
+        fun answer(resolution: ConflictResolution) {
+            request.response.complete(ConflictChoice(resolution, applyToAll))
+        }
+        FinderAlertDialog(
+            onDismissRequest = { answer(ConflictResolution.CANCEL_ALL) },
+            icon = { FinderAppIcon() },
+            title = stringResource(R.string.conflict_title, request.name),
+            message = stringResource(R.string.conflict_body),
+            buttons = listOf(
+                FinderAlertButton(
+                    text = stringResource(R.string.conflict_keep_both),
+                    style = FinderButtonStyle.Default,
+                ) { answer(ConflictResolution.KEEP_BOTH) },
+                FinderAlertButton(
+                    text = stringResource(R.string.conflict_replace),
+                    style = FinderButtonStyle.Destructive,
+                ) { answer(ConflictResolution.REPLACE) },
+                FinderAlertButton(stringResource(R.string.conflict_skip)) {
+                    answer(ConflictResolution.SKIP)
+                },
+                FinderAlertButton(stringResource(R.string.conflict_cancel_all)) {
+                    answer(ConflictResolution.CANCEL_ALL)
+                },
+            ),
+        ) {
+            FinderCheckboxRow(
+                checked = applyToAll,
+                onCheckedChange = { applyToAll = it },
+                text = stringResource(R.string.conflict_apply_all),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
-    AlertDialog(
-        onDismissRequest = { answer(ConflictResolution.CANCEL_ALL) },
-        title = { Text(stringResource(R.string.conflict_title, request.name)) },
-        text = {
-            Column {
-                Text(stringResource(R.string.conflict_body))
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = applyToAll, onCheckedChange = { applyToAll = it })
-                    Text(stringResource(R.string.conflict_apply_all), fontSize = 13.sp)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { answer(ConflictResolution.KEEP_BOTH) }) {
-                Text(stringResource(R.string.conflict_keep_both))
-            }
-            TextButton(onClick = { answer(ConflictResolution.REPLACE) }) {
-                Text(stringResource(R.string.conflict_replace))
-            }
-            TextButton(onClick = { answer(ConflictResolution.SKIP) }) {
-                Text(stringResource(R.string.conflict_skip))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { answer(ConflictResolution.CANCEL_ALL) }) {
-                Text(stringResource(R.string.conflict_cancel_all))
-            }
-        },
-    )
 }
 
 /** 完全削除の確認（SPEC §6.3: 完全削除は確認ダイアログ必須） */
@@ -76,28 +70,23 @@ fun DeleteConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    FinderAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.delete_confirm_title)) },
-        text = {
-            Text(
-                if (emptyAll) {
-                    stringResource(R.string.empty_trash_confirm_body)
-                } else {
-                    stringResource(R.string.delete_confirm_body, count)
-                },
-            )
+        icon = { FinderAppIcon() },
+        title = stringResource(R.string.delete_confirm_title),
+        message = if (emptyAll) {
+            stringResource(R.string.empty_trash_confirm_body)
+        } else {
+            stringResource(R.string.delete_confirm_body, count)
         },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text(stringResource(R.string.delete_confirm_ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
-        },
+        buttons = listOf(
+            FinderAlertButton(
+                text = stringResource(R.string.delete_confirm_ok),
+                style = FinderButtonStyle.Destructive,
+                onClick = onConfirm,
+            ),
+            FinderAlertButton(text = stringResource(R.string.cancel), onClick = onDismiss),
+        ),
     )
 }
 
@@ -133,101 +122,84 @@ fun BatchRenameDialog(
         }
     }
 
-    AlertDialog(
+    FinderAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.batch_rename_title)) },
-        text = {
-            Column {
-                Row {
-                    FilterChip(
-                        selected = mode == BatchMode.SEQUENCE,
-                        onClick = { mode = BatchMode.SEQUENCE },
-                        label = { Text(stringResource(R.string.batch_mode_seq), fontSize = 12.sp) },
-                    )
-                    Spacer(Modifier.padding(2.dp))
-                    FilterChip(
-                        selected = mode == BatchMode.REPLACE,
-                        onClick = { mode = BatchMode.REPLACE },
-                        label = { Text(stringResource(R.string.batch_mode_replace), fontSize = 12.sp) },
-                    )
-                    Spacer(Modifier.padding(2.dp))
-                    FilterChip(
-                        selected = mode == BatchMode.AFFIX,
-                        onClick = { mode = BatchMode.AFFIX },
-                        label = { Text(stringResource(R.string.batch_mode_affix), fontSize = 12.sp) },
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                when (mode) {
-                    BatchMode.SEQUENCE -> {
-                        OutlinedTextField(
-                            value = baseName,
-                            onValueChange = { baseName = it },
-                            label = { Text(stringResource(R.string.batch_base_name)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        OutlinedTextField(
-                            value = startNumber,
-                            onValueChange = { startNumber = it },
-                            label = { Text(stringResource(R.string.batch_start_number)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    BatchMode.REPLACE -> {
-                        OutlinedTextField(
-                            value = find,
-                            onValueChange = { find = it },
-                            label = { Text(stringResource(R.string.batch_find)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        OutlinedTextField(
-                            value = replaceWith,
-                            onValueChange = { replaceWith = it },
-                            label = { Text(stringResource(R.string.batch_replace_with)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    BatchMode.AFFIX -> {
-                        OutlinedTextField(
-                            value = prefix,
-                            onValueChange = { prefix = it },
-                            label = { Text(stringResource(R.string.batch_prefix)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        OutlinedTextField(
-                            value = suffix,
-                            onValueChange = { suffix = it },
-                            label = { Text(stringResource(R.string.batch_suffix)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = stringResource(
-                        R.string.batch_preview,
-                        transform(0, firstName, isDir = false),
-                    ),
-                    color = colors.textSecondary,
-                    fontSize = 12.sp,
+        title = stringResource(R.string.batch_rename_title),
+        width = 320.dp,
+        buttons = listOf(
+            FinderAlertButton(
+                text = stringResource(R.string.batch_apply),
+                style = FinderButtonStyle.Default,
+            ) { onApply(::transform) },
+            FinderAlertButton(text = stringResource(R.string.cancel), onClick = onDismiss),
+        ),
+    ) {
+        FinderSegmented(
+            options = listOf(
+                stringResource(R.string.batch_mode_seq),
+                stringResource(R.string.batch_mode_replace),
+                stringResource(R.string.batch_mode_affix),
+            ),
+            selectedIndex = mode.ordinal,
+            onSelect = { mode = BatchMode.entries[it] },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        when (mode) {
+            BatchMode.SEQUENCE -> {
+                FinderTextField(
+                    value = baseName,
+                    onValueChange = { baseName = it },
+                    label = stringResource(R.string.batch_base_name),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                FinderTextField(
+                    value = startNumber,
+                    onValueChange = { startNumber = it },
+                    label = stringResource(R.string.batch_start_number),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onApply(::transform) }) {
-                Text(stringResource(R.string.batch_apply))
+            BatchMode.REPLACE -> {
+                FinderTextField(
+                    value = find,
+                    onValueChange = { find = it },
+                    label = stringResource(R.string.batch_find),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                FinderTextField(
+                    value = replaceWith,
+                    onValueChange = { replaceWith = it },
+                    label = stringResource(R.string.batch_replace_with),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+            BatchMode.AFFIX -> {
+                FinderTextField(
+                    value = prefix,
+                    onValueChange = { prefix = it },
+                    label = stringResource(R.string.batch_prefix),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(10.dp))
+                FinderTextField(
+                    value = suffix,
+                    onValueChange = { suffix = it },
+                    label = stringResource(R.string.batch_suffix),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-        },
-    )
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = stringResource(
+                R.string.batch_preview,
+                transform(0, firstName, isDir = false),
+            ),
+            color = colors.textSecondary,
+            fontSize = 12.sp,
+        )
+    }
 }
