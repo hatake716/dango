@@ -12,6 +12,7 @@ import coil3.gif.AnimatedImageDecoder
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import coil3.video.VideoFrameDecoder
+import io.github.hatake716.dango.data.apk.ApkIconFetcher
 import io.github.hatake716.dango.data.apk.ApkInspector
 import io.github.hatake716.dango.data.apk.ApkInstaller
 import io.github.hatake716.dango.data.archive.ArchiveManager
@@ -82,6 +83,7 @@ class DangoApp : Application(), SingletonImageLoader.Factory {
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .components {
+                add(ApkIconFetcher.Factory())
                 add(AnimatedImageDecoder.Factory())
                 add(SvgDecoder.Factory())
                 add(VideoFrameDecoder.Factory())

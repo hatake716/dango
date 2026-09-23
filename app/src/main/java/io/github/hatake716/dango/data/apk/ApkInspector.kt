@@ -47,7 +47,8 @@ class ApkInspector(context: Context) {
             throw ApkParseException("not local: ${entry.path.key}")
         }
         val path = entry.path.displayPath()
-        val cacheKey = "$path:${entry.size}:${entry.lastModified}"
+        // ラベルと権限の説明は端末言語で読むため言語もキーに含める
+        val cacheKey = "$path:${entry.size}:${entry.lastModified}:${java.util.Locale.getDefault().toLanguageTag()}"
         val parsed = parsedCache.get(cacheKey) ?: run {
             val started = SystemClock.elapsedRealtime()
             parse(path).also {

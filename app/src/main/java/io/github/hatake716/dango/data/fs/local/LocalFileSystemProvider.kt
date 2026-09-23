@@ -164,7 +164,7 @@ class LocalFileSystemProvider : FileSystemProvider {
             else -> EntryKind.OTHER
         }
 
-        /** Coil でサムネイル描画できる拡張子（画像＋GIF/SVG＋動画フレーム） */
-        fun hasPreview(ext: String): Boolean = ext in IMAGE_EXT || ext in VIDEO_EXT
+        /** Coil でサムネイル描画できる拡張子（画像＋GIF/SVG＋動画フレーム＋APK のアプリアイコン） */
+        fun hasPreview(ext: String): Boolean = ext in IMAGE_EXT || ext in VIDEO_EXT || ext == "apk"
     }
 }

@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import io.github.hatake716.dango.R
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.hatake716.dango.data.apk.ApkInstaller
@@ -190,7 +191,7 @@ private fun BrowserScreenContent(
                     val action = android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES
                     runCatching {
                         context.startActivity(
-                            android.content.Intent(action, android.net.Uri.parse("package:" + context.packageName)),
+                            android.content.Intent(action, "package:${context.packageName}".toUri()),
                         )
                     }.recoverCatching {
                         context.startActivity(android.content.Intent(action))
