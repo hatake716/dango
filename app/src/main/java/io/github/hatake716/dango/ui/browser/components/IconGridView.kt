@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -127,7 +126,8 @@ fun IconGridView(
                             placementSpec = tween(250),
                             fadeOutSpec = tween(300),
                         )
-                        .marqueeItemBounds(marquee, entry.path.key),
+                        .marqueeItemBounds(marquee, entry.path.key)
+                        .registerItemBounds(entry.path.key),
                 )
             }
         }
@@ -263,10 +263,11 @@ private fun IconGridItem(
             .padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        DropdownMenu(
+        FinderMenu(
             expanded = hooks.contextMenuKey == key,
             onDismissRequest = hooks.onContextDismiss,
             offset = hooks.contextMenuOffset,
+            atPointer = true,
         ) {
             hooks.contextMenuContent(this, entry)
         }
@@ -277,23 +278,12 @@ private fun IconGridItem(
                 .background(iconBackground),
             contentAlignment = Alignment.Center,
         ) {
-            if (entry.previewUri != null) {
-                AsyncImage(
-                    model = entry.previewUri,
-                    contentDescription = entry.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(iconBox - 6.dp)
-                        .clip(RoundedCornerShape(6.dp)),
-                )
-            } else {
-                Icon(
-                    imageVector = entryIcon(entry.kind),
-                    contentDescription = null,
-                    tint = entryTint(entry.kind, colors),
-                    modifier = Modifier.size(iconBox * 0.72f),
-                )
-            }
+            EntryThumbnailOrIcon(
+                entry = entry,
+                thumbSize = iconBox - 6.dp,
+                iconSize = iconBox * 0.78f,
+                shape = RoundedCornerShape(6.dp),
+            )
         }
         if (tags.isNotEmpty()) {
             Row(modifier = Modifier.padding(top = 2.dp)) {

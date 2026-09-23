@@ -19,9 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.R
 import io.github.hatake716.dango.domain.model.FsEntry
-import io.github.hatake716.dango.ui.browser.components.entryIcon
-import io.github.hatake716.dango.ui.theme.DarkDangoColors
-import io.github.hatake716.dango.ui.browser.components.entryTint
+import io.github.hatake716.dango.ui.browser.components.EntryKindIcon
 import io.github.hatake716.dango.ui.util.formatSize
 import io.github.hatake716.dango.ui.util.kindLabel
 
@@ -38,12 +36,7 @@ fun OtherPage(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
     ) {
-        Icon(
-            imageVector = entryIcon(entry.kind),
-            contentDescription = null,
-            tint = entryTint(entry.kind, DarkDangoColors),
-            modifier = Modifier.size(72.dp),
-        )
+        EntryKindIcon(kind = entry.kind, name = entry.name, size = 72.dp)
         Spacer(Modifier.height(16.dp))
         Text(
             text = entry.name,

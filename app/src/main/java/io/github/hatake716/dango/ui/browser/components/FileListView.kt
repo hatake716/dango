@@ -34,7 +34,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -201,7 +200,8 @@ fun FileListView(
                                     fadeInSpec = tween(180),
                                     fadeOutSpec = tween(300),
                                 )
-                                .marqueeItemBounds(marquee, row.entry.path.key),
+                                .marqueeItemBounds(marquee, row.entry.path.key)
+                                .registerItemBounds(row.entry.path.key),
                         )
                     }
                 }
@@ -533,10 +533,11 @@ private fun ListRow(
             .padding(start = (12 + row.depth * 18).dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        DropdownMenu(
+        FinderMenu(
             expanded = hooks.contextMenuKey == key,
             onDismissRequest = hooks.onContextDismiss,
             offset = hooks.contextMenuOffset,
+            atPointer = true,
         ) {
             hooks.contextMenuContent(this, entry)
         }
@@ -560,28 +561,13 @@ private fun ListRow(
             }
             Spacer(Modifier.width(2.dp))
         }
-        if (entry.previewUri != null) {
-            AsyncImage(
-                model = entry.previewUri,
-                contentDescription = entry.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(18.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-            )
-        } else {
-            Icon(
-                imageVector = entryIcon(entry.kind),
-                contentDescription = null,
-                // フォルダは選択中も Finder 同様に固有色のまま（白 tint で潰さない）
-                tint = if (selected && entry.kind != io.github.hatake716.dango.domain.model.EntryKind.FOLDER) {
-                    colors.onSelection
-                } else {
-                    entryTint(entry.kind, colors)
-                },
-                modifier = Modifier.size(18.dp),
-            )
-        }
+        // 種類アイコンは選択中も Finder 同様に固有色のまま（白 tint で潰さない）
+        EntryThumbnailOrIcon(
+            entry = entry,
+            thumbSize = 18.dp,
+            iconSize = 18.dp,
+            shape = RoundedCornerShape(3.dp),
+        )
         Spacer(Modifier.width(8.dp))
         if (renaming) {
             InlineRenameField(

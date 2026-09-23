@@ -32,8 +32,7 @@ import io.github.hatake716.dango.R
 import io.github.hatake716.dango.data.info.EntryDetails
 import io.github.hatake716.dango.data.info.InfoLoader
 import io.github.hatake716.dango.domain.model.FsEntry
-import io.github.hatake716.dango.ui.browser.components.entryIcon
-import io.github.hatake716.dango.ui.browser.components.entryTint
+import io.github.hatake716.dango.ui.browser.components.EntryKindIcon
 import io.github.hatake716.dango.ui.theme.DangoTheme
 import io.github.hatake716.dango.ui.util.formatDateTime
 import io.github.hatake716.dango.ui.util.formatSize
@@ -79,12 +78,7 @@ fun InfoSheet(
                 .padding(bottom = 32.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = entryIcon(entry.kind),
-                    contentDescription = null,
-                    tint = entryTint(entry.kind, colors),
-                    modifier = Modifier.size(36.dp),
-                )
+                EntryKindIcon(kind = entry.kind, name = entry.name, size = 36.dp)
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(

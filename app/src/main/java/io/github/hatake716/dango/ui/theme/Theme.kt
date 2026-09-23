@@ -1,8 +1,10 @@
 package io.github.hatake716.dango.ui.theme
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -13,6 +15,8 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.domain.model.ThemeMode
 
@@ -65,6 +69,9 @@ val LocalDangoColors = staticCompositionLocalOf { LightDangoColors }
 object DangoTheme {
     val colors: DangoColors
         @Composable get() = LocalDangoColors.current
+
+    /** アニメーション仕様（SPEC §5）。[DangoMotion] を参照 */
+    val motion: DangoMotion get() = DangoMotion
 }
 
 @Composable
@@ -74,18 +81,23 @@ fun isDarkTheme(themeMode: ThemeMode): Boolean = when (themeMode) {
     ThemeMode.DARK -> true
 }
 
-/** 英数を SF 風に見せる字間 -0.2sp（SPEC §9） */
+/**
+ * 英数を SF 風に見せる字間 -0.2sp（SPEC §9）。行間は文字サイズに対する相対値
+ * （macOS の約 1.2〜1.3 倍）にする。M3 既定の固定 24sp だと fontSize だけ小さく
+ * 指定した複数行テキストの行間が開きすぎるため
+ */
 private val DangoTypography = Typography().let { t ->
+    fun TextStyle.finder() = copy(letterSpacing = (-0.2).sp, lineHeight = 1.3.em)
     t.copy(
-        titleLarge = t.titleLarge.copy(letterSpacing = (-0.2).sp),
-        titleMedium = t.titleMedium.copy(letterSpacing = (-0.2).sp),
-        titleSmall = t.titleSmall.copy(letterSpacing = (-0.2).sp),
-        bodyLarge = t.bodyLarge.copy(letterSpacing = (-0.2).sp),
-        bodyMedium = t.bodyMedium.copy(letterSpacing = (-0.2).sp),
-        bodySmall = t.bodySmall.copy(letterSpacing = (-0.2).sp),
-        labelLarge = t.labelLarge.copy(letterSpacing = (-0.2).sp),
-        labelMedium = t.labelMedium.copy(letterSpacing = (-0.2).sp),
-        labelSmall = t.labelSmall.copy(letterSpacing = (-0.2).sp),
+        titleLarge = t.titleLarge.finder(),
+        titleMedium = t.titleMedium.finder(),
+        titleSmall = t.titleSmall.finder(),
+        bodyLarge = t.bodyLarge.finder(),
+        bodyMedium = t.bodyMedium.finder(),
+        bodySmall = t.bodySmall.finder(),
+        labelLarge = t.labelLarge.finder(),
+        labelMedium = t.labelMedium.finder(),
+        labelSmall = t.labelSmall.finder(),
     )
 }
 
@@ -95,7 +107,7 @@ private val DangoTypography = Typography().let { t ->
  */
 @Composable
 private fun animatedDangoColors(target: DangoColors): DangoColors {
-    val spec = tween<Color>(durationMillis = 300)
+    val spec = DangoMotion.themeFade<Color>()
     val windowBackground by animateColorAsState(target.windowBackground, spec, label = "windowBg")
     val sidebar by animateColorAsState(target.sidebar, spec, label = "sidebar")
     val toolbar by animateColorAsState(target.toolbar, spec, label = "toolbar")
@@ -122,6 +134,7 @@ private fun animatedDangoColors(target: DangoColors): DangoColors {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DangoTheme(
     themeMode: ThemeMode,
@@ -157,6 +170,24 @@ fun DangoTheme(
             outlineVariant = colors.divider,
             secondaryContainer = colors.selectionUnfocused,
             onSecondaryContainer = colors.textPrimary,
+            // 未指定だと M3 既定の薄紫が残るロール（メニュー・ダイアログ・スナックバー等）を
+            // Finder のトークンで埋める
+            primaryContainer = colors.selectionFocused,
+            onPrimaryContainer = colors.onSelection,
+            secondary = colors.textSecondary,
+            tertiary = colors.accent,
+            surfaceContainerLowest = colors.windowBackground,
+            surfaceContainerLow = colors.altRow,
+            surfaceContainer = colors.sidebar,
+            surfaceContainerHigh = colors.toolbar,
+            surfaceContainerHighest = colors.divider,
+            surfaceBright = colors.toolbar,
+            surfaceDim = colors.windowBackground,
+            surfaceTint = Color.Transparent,
+            inverseSurface = colors.textPrimary,
+            inverseOnSurface = colors.windowBackground,
+            inversePrimary = colors.accent,
+            error = Color(0xFFFF5257),
         )
     } else {
         lightColorScheme(
@@ -172,9 +203,33 @@ fun DangoTheme(
             outlineVariant = colors.divider,
             secondaryContainer = colors.selectionUnfocused,
             onSecondaryContainer = colors.textPrimary,
+            primaryContainer = colors.selectionFocused,
+            onPrimaryContainer = colors.onSelection,
+            secondary = colors.textSecondary,
+            tertiary = colors.accent,
+            surfaceContainerLowest = colors.windowBackground,
+            surfaceContainerLow = colors.sidebar,
+            surfaceContainer = colors.toolbar,
+            surfaceContainerHigh = colors.windowBackground,
+            surfaceContainerHighest = colors.divider,
+            surfaceBright = colors.windowBackground,
+            surfaceDim = colors.sidebar,
+            surfaceTint = Color.Transparent,
+            inverseSurface = colors.textPrimary,
+            inverseOnSurface = colors.windowBackground,
+            inversePrimary = colors.accent,
+            error = Color(0xFFFF5257),
         )
     }
     CompositionLocalProvider(LocalDangoColors provides colors) {
-        MaterialTheme(colorScheme = scheme, typography = DangoTypography, content = content)
+        MaterialTheme(colorScheme = scheme, typography = DangoTypography) {
+            // Material の波紋は macOS に無いため使わない。押下は FinderPress の
+            // 「押している間だけわずかに暗くなる」表現に統一する
+            CompositionLocalProvider(
+                LocalIndication provides FinderPressIndication,
+                LocalRippleConfiguration provides null,
+                content = content,
+            )
+        }
     }
 }

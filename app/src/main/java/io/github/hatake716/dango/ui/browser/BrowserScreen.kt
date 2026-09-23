@@ -39,7 +39,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
+import io.github.hatake716.dango.ui.browser.components.FinderMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -48,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -94,12 +95,27 @@ import io.github.hatake716.dango.ui.browser.components.StatusBar
 import io.github.hatake716.dango.ui.browser.components.dragEndTracker
 import io.github.hatake716.dango.ui.browser.components.openCloudLink
 import io.github.hatake716.dango.ui.browser.components.onRightClick
+import io.github.hatake716.dango.ui.browser.components.LocalItemBounds
+import io.github.hatake716.dango.ui.browser.components.rememberItemBoundsRegistry
 import io.github.hatake716.dango.ui.info.InfoSheet
 import io.github.hatake716.dango.ui.quicklook.QuickLookHost
 import io.github.hatake716.dango.ui.theme.DangoTheme
 
 @Composable
 fun BrowserScreen(
+    viewModel: BrowserViewModel,
+    hasFullAccess: Boolean,
+    onRequestFullAccess: () -> Unit,
+) {
+    // アイテムの画面位置（Quick Look の起点ズーム・ゴミ箱への吸い込み等で使う）
+    val itemBounds = rememberItemBoundsRegistry()
+    CompositionLocalProvider(LocalItemBounds provides itemBounds) {
+        BrowserScreenContent(viewModel, hasFullAccess, onRequestFullAccess)
+    }
+}
+
+@Composable
+private fun BrowserScreenContent(
     viewModel: BrowserViewModel,
     hasFullAccess: Boolean,
     onRequestFullAccess: () -> Unit,
@@ -656,10 +672,11 @@ private fun MainPane(
                         },
                 ) {
                     ContentArea(viewModel, state, hooks)
-                    DropdownMenu(
+                    FinderMenu(
                         expanded = backgroundMenuAt != null,
                         onDismissRequest = { backgroundMenuAt = null },
                         offset = backgroundMenuAt ?: DpOffset.Zero,
+                        atPointer = true,
                     ) {
                         BackgroundContextMenuContent(
                             hasClipboard = state.clipboard != null,

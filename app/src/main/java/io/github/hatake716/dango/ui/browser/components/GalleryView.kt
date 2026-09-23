@@ -19,6 +19,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,12 +56,14 @@ fun GalleryView(
                 .padding(12.dp),
             contentAlignment = Alignment.Center,
         ) {
+            var previewFailed by remember(selected?.previewUri) { mutableStateOf(false) }
             when {
                 selected == null -> Unit
-                selected.previewUri != null -> AsyncImage(
+                selected.previewUri != null && !previewFailed -> AsyncImage(
                     model = selected.previewUri,
                     contentDescription = selected.name,
                     contentScale = ContentScale.Fit,
+                    onError = { previewFailed = true },
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(8.dp))
@@ -67,16 +73,14 @@ fun GalleryView(
                         ),
                 )
                 else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = entryIcon(selected.kind),
-                        contentDescription = null,
-                        tint = entryTint(selected.kind, colors),
-                        modifier = Modifier
-                            .size(96.dp)
-                            .combinedClickable(
-                                onClick = { onSelect(selected) },
-                                onDoubleClick = { onOpen(selected) },
-                            ),
+                    EntryKindIcon(
+                        kind = selected.kind,
+                        name = selected.name,
+                        size = 96.dp,
+                        modifier = Modifier.combinedClickable(
+                            onClick = { onSelect(selected) },
+                            onDoubleClick = { onOpen(selected) },
+                        ),
                     )
                 }
             }
@@ -130,20 +134,17 @@ fun GalleryView(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (entry.previewUri != null) {
+                    var thumbFailed by remember(entry.previewUri) { mutableStateOf(false) }
+                    if (entry.previewUri != null && !thumbFailed) {
                         AsyncImage(
                             model = entry.previewUri,
                             contentDescription = entry.name,
                             contentScale = ContentScale.Crop,
+                            onError = { thumbFailed = true },
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else {
-                        Icon(
-                            imageVector = entryIcon(entry.kind),
-                            contentDescription = null,
-                            tint = entryTint(entry.kind, colors),
-                            modifier = Modifier.size(36.dp),
-                        )
+                        EntryKindIcon(kind = entry.kind, name = entry.name, size = 36.dp)
                     }
                 }
             }

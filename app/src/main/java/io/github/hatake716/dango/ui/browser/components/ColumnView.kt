@@ -170,17 +170,8 @@ private fun ColumnPane(
                             .padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            imageVector = entryIcon(entry.kind),
-                            contentDescription = null,
-                            // フォルダは選択中も固有色のまま（Finder 同様）
-                            tint = if (isPathSelected && entry.kind != io.github.hatake716.dango.domain.model.EntryKind.FOLDER) {
-                                colors.onSelection
-                            } else {
-                                entryTint(entry.kind, colors)
-                            },
-                            modifier = Modifier.size(15.dp),
-                        )
+                        // 種類アイコンは選択中も固有色のまま（Finder 同様）
+                        EntryKindIcon(kind = entry.kind, name = entry.name, size = 15.dp)
                         Spacer(Modifier.width(6.dp))
                         Text(
                             text = entry.name,
@@ -217,23 +208,13 @@ private fun PreviewPane(entry: FsEntry, width: androidx.compose.ui.unit.Dp) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(16.dp))
-        if (entry.previewUri != null) {
-            AsyncImage(
-                model = entry.previewUri,
-                contentDescription = entry.name,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .size(width - 48.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-            )
-        } else {
-            Icon(
-                imageVector = entryIcon(entry.kind),
-                contentDescription = null,
-                tint = entryTint(entry.kind, colors),
-                modifier = Modifier.size(72.dp),
-            )
-        }
+        EntryThumbnailOrIcon(
+            entry = entry,
+            thumbSize = width - 48.dp,
+            iconSize = 72.dp,
+            shape = RoundedCornerShape(8.dp),
+            contentScale = ContentScale.Fit,
+        )
         Spacer(Modifier.height(10.dp))
         Text(
             text = entry.name,

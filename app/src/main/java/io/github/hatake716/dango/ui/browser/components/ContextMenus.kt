@@ -9,15 +9,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.R
 import io.github.hatake716.dango.domain.model.EntryKind
 import io.github.hatake716.dango.domain.model.FsEntry
@@ -48,9 +44,15 @@ class EntryMenuActions(
 )
 
 @Composable
-private fun MenuItem(labelRes: Int, dismiss: () -> Unit, action: () -> Unit) {
-    DropdownMenuItem(
-        text = { Text(stringResource(labelRes)) },
+private fun MenuItem(
+    labelRes: Int,
+    dismiss: () -> Unit,
+    destructive: Boolean = false,
+    action: () -> Unit,
+) {
+    FinderMenuItem(
+        text = stringResource(labelRes),
+        destructive = destructive,
         onClick = {
             dismiss()
             action()
@@ -73,9 +75,9 @@ fun ColumnScope.EntryContextMenuContent(
     when {
         isTrash -> {
             MenuItem(R.string.act_restore, d) { actions.onRestore() }
-            MenuItem(R.string.act_delete_forever, d) { actions.onDelete() }
+            MenuItem(R.string.act_delete_forever, d, destructive = true) { actions.onDelete() }
             MenuItem(R.string.cd_select_all, d) { actions.onSelectAll() }
-            HorizontalDivider(color = colors.divider)
+            FinderMenuDivider()
             MenuItem(R.string.act_info, d) { actions.onInfo(entry) }
         }
         isArchiveBrowse -> {
@@ -90,12 +92,12 @@ fun ColumnScope.EntryContextMenuContent(
                 MenuItem(R.string.act_preview, d) { actions.onPreview(entry) }
             }
             if (entry.kind == EntryKind.ARCHIVE) {
-                HorizontalDivider(color = colors.divider)
+                FinderMenuDivider()
                 MenuItem(R.string.ctx_browse_archive, d) { actions.onBrowseArchive(entry) }
                 MenuItem(R.string.ctx_extract_here, d) { actions.onExtractHere(entry) }
                 MenuItem(R.string.ctx_extract_options, d) { actions.onExtractOptions(entry) }
             }
-            HorizontalDivider(color = colors.divider)
+            FinderMenuDivider()
             if (!entry.isDir) {
                 MenuItem(R.string.act_share, d) { actions.onShare(entry) }
                 MenuItem(R.string.ql_open_with, d) { actions.onOpenWith(entry) }
@@ -111,22 +113,17 @@ fun ColumnScope.EntryContextMenuContent(
                 }
             }
             MenuItem(R.string.cd_select_all, d) { actions.onSelectAll() }
-            HorizontalDivider(color = colors.divider)
+            FinderMenuDivider()
             MenuItem(R.string.act_duplicate, d) { actions.onDuplicate() }
             MenuItem(R.string.act_rename, d) { actions.onRename() }
             MenuItem(R.string.act_compress, d) { actions.onCompress() }
-            HorizontalDivider(color = colors.divider)
+            FinderMenuDivider()
             MenuItem(R.string.ctx_move_to_trash, d) { actions.onDelete() }
-            HorizontalDivider(color = colors.divider)
+            FinderMenuDivider()
             // タグ（SPEC §6.3: 7色。タップでトグル）
             if (entry.path.scheme == "file") {
-                Text(
-                    text = stringResource(R.string.ctx_tags),
-                    color = colors.textSecondary,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                )
-                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) {
+                FinderMenuHeader(stringResource(R.string.ctx_tags))
+                Row(modifier = Modifier.padding(start = 24.dp, end = 12.dp, top = 2.dp, bottom = 4.dp)) {
                     TAG_COLOR_VALUES.forEach { (tag, color) ->
                         val active = tag in entryTags
                         Box(
@@ -146,7 +143,7 @@ fun ColumnScope.EntryContextMenuContent(
                         )
                     }
                 }
-                HorizontalDivider(color = colors.divider)
+                FinderMenuDivider()
             }
             MenuItem(R.string.act_info, d) { actions.onInfo(entry) }
         }
@@ -167,15 +164,15 @@ fun ColumnScope.BackgroundContextMenuContent(
     dismiss: () -> Unit,
 ) {
     if (!isTrash && !isArchiveBrowse) {
-        MenuItem(R.string.menu_new_folder, dismiss, onNewFolder)
+        MenuItem(R.string.menu_new_folder, dismiss, action = onNewFolder)
         MenuItem(R.string.menu_new_text, dismiss) { onNewTextFile("txt") }
         if (hasClipboard) {
-            MenuItem(R.string.clip_paste, dismiss, onPaste)
+            MenuItem(R.string.clip_paste, dismiss, action = onPaste)
         }
-        HorizontalDivider(color = DangoTheme.colors.divider)
+        FinderMenuDivider()
     }
     if (!isArchiveBrowse) {
-        MenuItem(R.string.cd_select_all, dismiss, onSelectAll)
+        MenuItem(R.string.cd_select_all, dismiss, action = onSelectAll)
     }
-    MenuItem(R.string.menu_reload, dismiss, onReload)
+    MenuItem(R.string.menu_reload, dismiss, action = onReload)
 }

@@ -13,6 +13,7 @@
     <string name="cd_back">Back</string>
     <string name="cd_forward">Forward</string>
     <string name="cd_view_icon">Icon view</string>
+    <string name="cd_view_mode">View: %1$s</string>
     <string name="cd_view_list">List view</string>
     <string name="cd_view_column">Column view</string>
     <string name="cd_view_gallery">Gallery view</string>

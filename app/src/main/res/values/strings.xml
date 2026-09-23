@@ -15,9 +15,10 @@
     <string name="cd_back">戻る</string>
     <string name="cd_forward">進む</string>
     <string name="cd_view_icon">アイコン表示</string>
+    <string name="cd_view_mode">表示方法: %1$s</string>
     <string name="cd_view_list">リスト表示</string>
-    <string name="cd_view_column">カラム表示（未対応）</string>
-    <string name="cd_view_gallery">ギャラリー表示（未対応）</string>
+    <string name="cd_view_column">カラム表示</string>
+    <string name="cd_view_gallery">ギャラリー表示</string>
     <string name="cd_sort">並べ替え</string>
     <string name="cd_more">その他</string>
     <string name="cd_exit_selection">選択を解除</string>
