@@ -29,9 +29,7 @@ import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -178,11 +176,14 @@ private fun TextViewer(
                 overflow = TextOverflow.Ellipsis,
             )
             if (doc.truncated) {
-                TextButton(onClick = { loadingAll = true }, enabled = !loadingAll) {
-                    Text(stringResource(R.string.txt_load_all), fontSize = 11.sp)
-                }
+                FinderPushButton(
+                    text = stringResource(R.string.txt_load_all),
+                    onClick = { loadingAll = true },
+                    enabled = !loadingAll,
+                    compact = true,
+                )
             }
-            IconButton(onClick = { wrap = !wrap }) {
+            QlIconButton(onClick = { wrap = !wrap }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.WrapText,
                     contentDescription = stringResource(R.string.txt_wrap),
@@ -190,7 +191,7 @@ private fun TextViewer(
                     modifier = Modifier.size(16.dp),
                 )
             }
-            IconButton(onClick = onEdit) {
+            QlIconButton(onClick = onEdit) {
                 Icon(
                     imageVector = Icons.Outlined.Edit,
                     contentDescription = stringResource(R.string.txt_edit),
@@ -355,7 +356,7 @@ private fun TextEditor(
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { undo() }, enabled = undoStack.value.size > 1) {
+            QlIconButton(onClick = { undo() }, enabled = undoStack.value.size > 1) {
                 Icon(
                     Icons.AutoMirrored.Outlined.Undo,
                     contentDescription = stringResource(R.string.txt_undo),
@@ -363,7 +364,7 @@ private fun TextEditor(
                     modifier = Modifier.size(16.dp),
                 )
             }
-            IconButton(onClick = { redo() }, enabled = redoStack.value.isNotEmpty()) {
+            QlIconButton(onClick = { redo() }, enabled = redoStack.value.isNotEmpty()) {
                 Icon(
                     Icons.AutoMirrored.Outlined.Redo,
                     contentDescription = stringResource(R.string.txt_redo),
@@ -371,7 +372,7 @@ private fun TextEditor(
                     modifier = Modifier.size(16.dp),
                 )
             }
-            IconButton(onClick = { showSearch = !showSearch }) {
+            QlIconButton(onClick = { showSearch = !showSearch }) {
                 Icon(
                     Icons.Outlined.FindReplace,
                     contentDescription = stringResource(R.string.txt_find),
@@ -381,19 +382,20 @@ private fun TextEditor(
             }
             Spacer(Modifier.weight(1f))
             LineEndingSelector(lineEnding) { lineEnding = it; dirty = true }
-            TextButton(onClick = { showSaveConfirm = true }, enabled = dirty && !saving) {
-                Icon(
-                    Icons.Outlined.Save,
-                    contentDescription = null,
-                    tint = if (dirty) Color.White else Color.White.copy(alpha = 0.35f),
-                    modifier = Modifier.size(14.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(stringResource(R.string.txt_save), fontSize = 12.sp)
-            }
-            TextButton(onClick = { requestExit() }) {
-                Text(stringResource(R.string.ql_close), fontSize = 12.sp)
-            }
+            Spacer(Modifier.width(4.dp))
+            FinderPushButton(
+                text = stringResource(R.string.txt_save),
+                onClick = { showSaveConfirm = true },
+                enabled = dirty && !saving,
+                style = FinderButtonStyle.Default,
+                compact = true,
+            )
+            Spacer(Modifier.width(6.dp))
+            FinderPushButton(
+                text = stringResource(R.string.ql_close),
+                onClick = { requestExit() },
+                compact = true,
+            )
         }
         if (showSearch) {
             Row(
@@ -535,5 +537,23 @@ private fun CenterLoading() {
 private fun CenterMessage(text: String) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(text = text, color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+    }
+}
+
+/** Quick Look のツールバー用の小さなアイコンボタン（押下は FinderPress の暗転） */
+@Composable
+private fun QlIconButton(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }

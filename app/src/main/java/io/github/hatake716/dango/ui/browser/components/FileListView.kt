@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -178,6 +179,12 @@ fun FileListView(
         SideEffect { previousKeys[0] = rowKeys }
         // 出現アニメは各行につき一度だけ（スクロールで画面外から戻った行では再生しない）
         val pendingReveal = remember(change) { change.inserted.toHashSet() }
+        LaunchedEffect(change) {
+            // 直後の2フレームで可視行が合成された後は、残り（画面外の行）を出現させない
+            withFrameNanos { }
+            withFrameNanos { }
+            pendingReveal.clear()
+        }
         val placementSpec = when {
             LocalSuppressPlacement.current -> null
             change.isExpandOrCollapse -> DangoMotion.expand<IntOffset>()
@@ -602,6 +609,8 @@ private fun ListRow(
             .fillMaxWidth()
             .height(ROW_HEIGHT)
             .drawBehind {
+                // ゴミ箱へ飛んでいる間は選択の背景も描かない
+                if (bounds?.hiddenKeys?.contains(key) == true) return@drawBehind
                 // 選択・ドロップ先の背景は左右をインセットした角丸（内容の位置は動かさない）
                 val inset = ROW_INSET.toPx()
                 val bodySize = Size(size.width - inset * 2, size.height)
@@ -632,9 +641,10 @@ private fun ListRow(
                 onDropKeys = { keys -> hooks.onDropInto(keys, entry) },
             )
             .onRightClick { offset ->
+                // メニューの基準は行の内側（余白の内側）なので、その分を差し引いてカーソル位置に出す
                 hooks.onContextRequest(
                     entry,
-                    with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) },
+                    with(density) { DpOffset(offset.x.toDp() - (12 + row.depth * 18).dp, offset.y.toDp()) },
                 )
             }
             .recordClickModifiers(clickMods)
@@ -727,6 +737,8 @@ private fun ListRow(
             iconSize = 18.dp,
             shape = RoundedCornerShape(2.dp),
             fit = true,
+            // Quick Look はこのアイコンから拡大する（行全体は削除の起点に使う）
+            modifier = Modifier.registerItemBounds(iconBoundsKey(key), exact = true),
         )
         Spacer(Modifier.width(8.dp))
         if (renaming) {

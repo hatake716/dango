@@ -106,7 +106,7 @@ fun ColumnView(
     loadChildren: suspend (FsPath) -> List<FsEntry>,
     onNavigate: (FsPath) -> Unit,
     onTapFile: (FsEntry) -> Unit,
-    onDoubleTapFile: (FsEntry) -> Unit,
+    selectionMode: Boolean = false,
 ) {
     // base から currentPath までの祖先チェーンが各列になる
     val chain: List<FsPath> = remember(basePath, currentPath) {
@@ -125,8 +125,13 @@ fun ColumnView(
         }
     }
     val chainKeys = remember(chain) { chain.map { it.key } }
-    // 列の中身のキャッシュ（横スワイプで列が作り直されても空白を挟まない）
+    // 列の中身のキャッシュ（横スワイプで列が作り直されても空白を挟まない）。
+    // 表示中の列だけ残し、訪れたフォルダの一覧を溜め込まない
     val paneCache = remember { mutableStateMapOf<String, List<FsEntry>>() }
+    LaunchedEffect(chainKeys) {
+        val keep = chainKeys.toHashSet()
+        paneCache.keys.retainAll(keep)
+    }
     // プレビュー列（SPEC §4.4）は現在フォルダの単独選択ファイルにだけ出す。
     // フォルダ移動・選択解除で自然に消える
     val preview = selection.singleOrNull()?.let { key ->
@@ -234,13 +239,18 @@ fun ColumnView(
                             if (entry.isDir) {
                                 onNavigate(entry.path)
                             } else if (entry.path.key == preview?.path?.key) {
-                                // プレビュー中のファイルをもう一度タップで開く
-                                onDoubleTapFile(entry)
-                            } else {
-                                // 手前の列のファイルなら、その列まで畳んでからプレビューする（Finder）
-                                val parent = entry.path.parent
-                                if (parent != null && parent.key != currentPath.key) onNavigate(parent)
+                                // プレビュー中（選択中）のファイルをもう一度タップ: 通常は開き、
+                                // 選択モードでは選択を外す（どちらもタップの共通処理が担う）
                                 onTapFile(entry)
+                            } else {
+                                // 手前の列のファイルなら、その列まで畳んでからプレビューする（Finder）。
+                                // 選択モード中は畳むと選択が失われるため何もしない
+                                val parent = entry.path.parent
+                                val inEarlierColumn = parent != null && parent.key != currentPath.key
+                                if (!(inEarlierColumn && selectionMode)) {
+                                    if (inEarlierColumn) onNavigate(parent!!)
+                                    onTapFile(entry)
+                                }
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -440,7 +450,7 @@ private fun ColumnRow(
             height = 16.dp,
             iconSize = 16.dp,
             placeholderIcon = true,
-            frameModifier = Modifier.registerItemBounds(entry.path.key),
+            frameModifier = Modifier.registerItemBounds(entry.path.key, exact = true),
         )
         Spacer(Modifier.width(6.dp))
         Text(

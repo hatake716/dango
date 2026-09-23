@@ -256,8 +256,10 @@ private fun DrawScope.drawDragImage(
             iconTopPx = image.iconTop.toPx()
         }
         DragImageStyle.ROW -> {
+            // シャドウは中心が指の位置に来るよう置かれる。行幅いっぱいの左端に描くと
+            // 指から離れて画面外に出るため、アイコンの右端を中心のすぐ左に置く
             iconPx = image.iconSize.toPx()
-            iconLeft = 10.dp.toPx()
+            iconLeft = (size.width / 2f - iconPx - 6.dp.toPx()).coerceAtLeast(0f)
             iconTopPx = (size.height - iconPx) / 2f
         }
     }
@@ -285,7 +287,7 @@ private fun DrawScope.drawDragImage(
         }
         DragImageStyle.ROW -> {
             val left = iconLeft + iconPx + 8.dp.toPx()
-            val maxW = (size.width * 0.6f - left).toInt().coerceAtLeast(1)
+            val maxW = minOf(size.width - left - 8.dp.toPx(), 240.dp.toPx()).toInt().coerceAtLeast(1)
             val layout = measurer.measure(
                 text = image.name,
                 style = nameStyle,

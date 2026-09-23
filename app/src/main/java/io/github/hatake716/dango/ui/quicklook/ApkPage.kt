@@ -292,8 +292,11 @@ private fun ApkActions(
                         color = TextDim,
                         fontSize = 12.sp,
                     )
-                    Spacer(Modifier.height(12.dp))
-                    PushButton(text = stringResource(R.string.cancel), primary = false, onClick = onCancel)
+                    // 承認後の実インストール中は取り消せない（中断すると結果が分からなくなる）
+                    if (installState.phase != ApkInstallPhase.INSTALLING) {
+                        Spacer(Modifier.height(12.dp))
+                        PushButton(text = stringResource(R.string.cancel), primary = false, onClick = onCancel)
+                    }
                 }
             }
         }

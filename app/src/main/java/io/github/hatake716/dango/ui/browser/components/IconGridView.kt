@@ -251,9 +251,10 @@ private fun IconGridItem(
                 onDropKeys = { keys -> hooks.onDropInto(keys, entry) },
             )
             .onRightClick { offset ->
+                // メニューの基準はセルの内側（余白 6dp の内側）なので、その分を差し引く
                 hooks.onContextRequest(
                     entry,
-                    with(density) { DpOffset(offset.x.toDp(), offset.y.toDp()) },
+                    with(density) { DpOffset(offset.x.toDp() - 6.dp, offset.y.toDp() - 6.dp) },
                 )
             }
             .recordClickModifiers(clickMods)
@@ -317,6 +318,8 @@ private fun IconGridItem(
         Box(
             modifier = Modifier
                 .size(iconBox)
+                // Quick Look はこのアイコン部分から拡大する
+                .registerItemBounds(iconBoundsKey(key), exact = true)
                 .clip(backingShape)
                 .background(iconBackground)
                 .border(2.dp, dropBorder, backingShape),

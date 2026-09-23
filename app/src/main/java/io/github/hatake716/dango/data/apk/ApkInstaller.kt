@@ -22,6 +22,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -56,6 +57,45 @@ class ApkInstaller(context: Context, private val registry: ProviderRegistry) {
 
     /** 利用者が取り消したセッション。後から届く ABORTED は通知しない */
     private val cancelledSessions = Collections.synchronizedSet(mutableSetOf<Int>())
+
+    /** 確認画面を起動済みで、まだ戻ってきていない */
+    @Volatile
+    private var confirmLaunched = false
+
+    /**
+     * 結果の通知が来ないままセッションが終わった場合（確認画面が決定なしで破棄された等）の
+     * 保険。少し待っても受信側から結果が届かなければ、ここで終わらせる
+     */
+    private val sessionWatcher = object : PackageInstaller.SessionCallback() {
+        override fun onCreated(sessionId: Int) {}
+        override fun onBadgingChanged(sessionId: Int) {}
+        override fun onActiveChanged(sessionId: Int, active: Boolean) {}
+        override fun onProgressChanged(sessionId: Int, progress: Float) {}
+        override fun onFinished(sessionId: Int, success: Boolean) {
+            scope.launch {
+                delay(SESSION_RESULT_GRACE_MS)
+                val s = _state.value
+                val waiting = s.sessionId == sessionId &&
+                    (s.phase == ApkInstallPhase.AWAITING_USER || s.phase == ApkInstallPhase.INSTALLING)
+                if (!waiting) return@launch
+                android.util.Log.d("dango", "apk session $sessionId finished without status (success=$success)")
+                finish(
+                    sessionId,
+                    if (success) {
+                        ApkInstallResult.Success(s.targetKey, null)
+                    } else {
+                        ApkInstallResult.Failure(s.targetKey, PackageInstaller.STATUS_FAILURE_ABORTED, null)
+                    },
+                )
+            }
+        }
+    }
+
+    init {
+        runCatching {
+            installer.registerSessionCallback(sessionWatcher, android.os.Handler(android.os.Looper.getMainLooper()))
+        }
+    }
 
     fun canRequestInstalls(): Boolean = appContext.packageManager.canRequestPackageInstalls()
 
@@ -178,11 +218,26 @@ class ApkInstaller(context: Context, private val registry: ProviderRegistry) {
             runCatching { installer.abandonSession(s.sessionId) }
         }
         _confirm.value = null
+        confirmLaunched = false
         _state.value = ApkInstallState(generation = s.generation + 1)
     }
 
     fun consumeConfirm() {
         _confirm.value = null
+        confirmLaunched = true
+    }
+
+    /**
+     * ホスト画面が再開した（確認画面から戻った）。承認されていれば実際のインストールが
+     * 進行中なので、「確認待ち」ではなく「インストール中」として扱う（取り消しは出さない）。
+     * 拒否した場合は ABORTED が届いて終わる
+     */
+    fun onHostResumed() {
+        if (!confirmLaunched) return
+        confirmLaunched = false
+        _state.update {
+            if (it.phase == ApkInstallPhase.AWAITING_USER) it.copy(phase = ApkInstallPhase.INSTALLING) else it
+        }
     }
 
     fun appLabel(packageName: String): String? = runCatching {
@@ -231,7 +286,10 @@ class ApkInstaller(context: Context, private val registry: ProviderRegistry) {
             ours = s.phase == ApkInstallPhase.IDLE || s.sessionId == sessionId
             if (ours) ApkInstallState(generation = s.generation + 1) else s.copy(generation = s.generation + 1)
         }
-        if (ours) _confirm.value = null
+        if (ours) {
+            _confirm.value = null
+            confirmLaunched = false
+        }
         _results.trySend(result)
     }
 
@@ -241,6 +299,9 @@ class ApkInstaller(context: Context, private val registry: ProviderRegistry) {
     }
 
     companion object {
+        /** セッション終了後、受信側からの結果を待つ時間 */
+        private const val SESSION_RESULT_GRACE_MS = 1_500L
+
         const val ACTION_INSTALL_STATUS = "io.github.hatake716.dango.action.APK_INSTALL_STATUS"
         const val EXTRA_TARGET_KEY = "io.github.hatake716.dango.extra.APK_TARGET_KEY"
         private const val COPY_CHUNK = 256 * 1024

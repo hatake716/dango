@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import io.github.hatake716.dango.ui.browser.components.LocalItemBounds
+import io.github.hatake716.dango.ui.browser.components.iconBoundsKey
 import io.github.hatake716.dango.ui.theme.DangoMotion
 import io.github.hatake716.dango.ui.theme.DarkDangoColors
 import io.github.hatake716.dango.ui.theme.LocalDangoColors
@@ -117,6 +118,9 @@ class QuickLookMotion internal constructor() {
     /** progress = 0 の端点になるアイテムの矩形（ルート座標）。null ならフェード */
     private var sourceRect by mutableStateOf<Rect?>(null)
 
+    /** [sourceRect] が絵そのものの枠か（false ならアイテム全体からアイコン位置を推定する） */
+    private var sourceExact by mutableStateOf(false)
+
     /** progress = 1 の端点。開くときは等倍、閉じるときはその時点の見た目 */
     private var fullFrame by mutableStateOf(QlFrame.Identity)
     private var fallbackBase by mutableStateOf(QlFrame.Identity)
@@ -180,14 +184,21 @@ class QuickLookMotion internal constructor() {
         }
         // ページ領域がアイコンの矩形に収まる倍率・位置
         val area = Rect(overlay.left, overlay.top + contentTop, overlay.right, overlay.bottom)
-        val src = iconRectOf(item, rtl)
-        val s = min(src.width / area.width, src.height / area.height)
+        val src = if (sourceExact) item else iconRectOf(item, rtl)
+        val s = if (sourceExact) {
+            // 絵の枠そのもの: ページ内で同じ縦横比に収めた絵がその枠に重なる倍率
+            val ratio = src.width / src.height
+            val fitW = if (ratio >= area.width / area.height) area.width else area.height * ratio
+            src.width / fitW
+        } else {
+            min(src.width / area.width, src.height / area.height)
+        }
         val pivot = overlay.center
         val t = src.center - (pivot + (area.center - pivot) * s)
         return QlFrame(s, t.x, t.y)
     }
 
-    internal suspend fun enter(source: Rect?) = coroutineScope {
+    internal suspend fun enter(source: Rect?, exact: Boolean = false) = coroutineScope {
         val reopening = closing
         closing = false
         dismissing = false
@@ -201,7 +212,8 @@ class QuickLookMotion internal constructor() {
             fullFrame = QlFrame.Identity
             fallbackBase = QlFrame.Identity
             sourceRect = source?.takeIf { it.width > 0f && it.height > 0f }
-            Log.d("dango", "QL enter from=$sourceRect")
+            sourceExact = exact
+            Log.d("dango", "QL enter from=$sourceRect exact=$exact")
             withFrameNanos { }
             withTimeoutOrNull(DangoMotion.QUICK_LOOK_HOLD_MAX_MS) {
                 snapshotFlow { pendingKey }.first { it == null }
@@ -224,7 +236,7 @@ class QuickLookMotion internal constructor() {
     }
 
     /** 閉じる: その時点の見た目（ドラッグ中の位置を含む）から [target] へ縮小する */
-    internal suspend fun exit(target: Rect?) {
+    internal suspend fun exit(target: Rect?, exact: Boolean = false) {
         closing = true
         waitingContent = false
         pendingKey = null
@@ -245,6 +257,7 @@ class QuickLookMotion internal constructor() {
         fullFrame = now
         fallbackBase = if (usable == null) now else QlFrame.Identity
         sourceRect = usable
+        sourceExact = exact
         dragY = 0f
         progress.snapTo(1f)
         backdrop.snapTo(backdropNow)
@@ -285,11 +298,19 @@ fun QuickLookOverlay(
         motion.requested = false
     }
     val latestKey by rememberUpdatedState(currentKey)
+    // アイコン部分だけの登録があればそれを、無ければアイテム全体の矩形を起点にする
+    fun sourceOf(key: String?): Pair<Rect?, Boolean> {
+        if (key == null || registry == null) return null to false
+        registry[iconBoundsKey(key)]?.let { return it to true }
+        return registry[key] to registry.isExact(key)
+    }
     LaunchedEffect(visible) {
         if (visible) {
-            motion.enter(latestKey?.let { registry?.get(it) })
+            val (rect, exact) = sourceOf(latestKey)
+            motion.enter(rect, exact)
         } else if (motion.present) {
-            motion.exit(latestKey?.let { registry?.get(it) })
+            val (rect, exact) = sourceOf(latestKey)
+            motion.exit(rect, exact)
             motion.present = false
         }
     }
@@ -359,6 +380,9 @@ internal class QuickLookDismissState(
     private var settleJob: Job? = null
     private var nestedDragging = false
 
+    /** この操作の中で中身がスクロールしたか（したら同じ操作では閉じない。iOS と同じ） */
+    private var childScrolled = false
+
     private val canDrag: Boolean get() = enabled && !motion.closing && !motion.dismissing
 
     private fun begin() {
@@ -405,9 +429,10 @@ internal class QuickLookDismissState(
             available: Offset,
             source: NestedScrollSource,
         ): Offset {
+            if (source == NestedScrollSource.UserInput && consumed.y != 0f) childScrolled = true
             if (source != NestedScrollSource.UserInput || available.y <= 0f) return Offset.Zero
             if (!nestedDragging) {
-                if (!canDrag) return Offset.Zero
+                if (!canDrag || childScrolled) return Offset.Zero
                 nestedDragging = true
                 begin()
             }
@@ -416,14 +441,17 @@ internal class QuickLookDismissState(
 
         override suspend fun onPreFling(available: Velocity): Velocity {
             if (!nestedDragging) return Velocity.Zero
+            // 指を戻して引き量が 0 に戻っていれば、フリングは中身のスクロールに渡す
+            val active = motion.dragY > 0f
             release(available.y)
-            return available
+            return if (active) available else Velocity.Zero
         }
     }
 
     suspend fun PointerInputScope.detectDrag() {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
+            childScrolled = false
             val slop = viewConfiguration.touchSlop
             val tracker = VelocityTracker()
             tracker.addPointerInputChange(down)

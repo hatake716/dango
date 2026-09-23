@@ -132,7 +132,7 @@ fun GalleryView(
                     iconSize = min(160.dp, maxHeight * 0.4f),
                     shadowElevation = 6.dp,
                     placeholderCacheKey = entry.previewUri?.let(::stripCacheKey),
-                    frameModifier = Modifier.registerItemBounds(entry.path.key),
+                    frameModifier = Modifier.registerItemBounds(entry.path.key, exact = true),
                 )
             }
         }

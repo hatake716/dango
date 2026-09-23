@@ -84,6 +84,9 @@ fun PdfPage(
                 else -> PasswordDialog(
                     wrongPassword = attempt > 0,
                     onSubmit = {
+                        // 判定中は読み込み表示にしてダイアログを外す。誤りなら新しいダイアログで
+                        // 出し直す（残したままだと閉じる演出の後に出し直しの待ちが入ってちらつく）
+                        openResult = null
                         password = it
                         attempt++
                     },

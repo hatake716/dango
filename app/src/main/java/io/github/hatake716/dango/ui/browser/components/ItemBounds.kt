@@ -12,6 +12,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 
@@ -27,13 +28,23 @@ class ItemBoundsRegistry {
     /** 可視アイテムの位置。画面外（未配置）なら null */
     operator fun get(key: String): Rect? = bounds[key]
 
-    internal fun put(key: String, rect: Rect) {
+    /** 絵そのものの枠として登録された（アイテム全体ではない）キー */
+    private val exactKeys = HashSet<String>()
+
+    /** [key] の矩形が絵そのものの枠か（Quick Look はそのまま起点に使える） */
+    fun isExact(key: String): Boolean = key in exactKeys
+
+    internal fun put(key: String, rect: Rect, exact: Boolean) {
         bounds[key] = rect
+        if (exact) exactKeys += key else exactKeys -= key
     }
 
     internal fun remove(key: String, rect: Rect?) {
         // 同じキーの新しい配置（別ビュー）で上書き済みなら消さない
-        if (rect == null || bounds[key] == rect) bounds.remove(key)
+        if (rect == null || bounds[key] == rect) {
+            bounds.remove(key)
+            exactKeys -= key
+        }
     }
 
     /** ゴミ箱など、アニメーションの到達点として使う名前付きの位置 */
@@ -57,21 +68,30 @@ val LocalSuppressPlacement = compositionLocalOf { false }
 @Composable
 fun rememberItemBoundsRegistry(): ItemBoundsRegistry = remember { ItemBoundsRegistry() }
 
-/** アイテムの位置を [LocalItemBounds] に登録する（破棄時に削除） */
-fun Modifier.registerItemBounds(key: String): Modifier = composed {
+/**
+ * アイテムの位置を [LocalItemBounds] に登録する（破棄時に削除）。
+ * ゴミ箱へ飛んでいる間（[ItemBoundsRegistry.hiddenKeys]）は元の位置に描かない。
+ * 起点として登録した要素はどのビューでも必ず隠れるよう、ここでまとめて扱う
+ */
+fun Modifier.registerItemBounds(key: String, exact: Boolean = false): Modifier = composed {
     val registry = LocalItemBounds.current ?: return@composed this
     val holder = remember(key) { arrayOfNulls<Rect>(1) }
     DisposableEffect(registry, key) {
         onDispose { registry.remove(key, holder[0]) }
     }
-    onGloballyPositioned { coords ->
-        if (coords.isAttached) {
-            val r = coords.boundsInRoot()
-            holder[0] = r
-            registry.put(key, r)
+    this
+        .graphicsLayer { alpha = if (key in registry.hiddenKeys) 0f else 1f }
+        .onGloballyPositioned { coords ->
+            if (coords.isAttached) {
+                val r = coords.boundsInRoot()
+                holder[0] = r
+                registry.put(key, r, exact)
+            }
         }
-    }
 }
+
+/** 項目のアイコン（絵）部分だけの位置を登録するときのキー */
+fun iconBoundsKey(key: String): String = "icon:$key"
 
 /** アニメーション到達点（ゴミ箱の行・削除ボタンなど）の位置を登録する */
 fun Modifier.registerAnimationTarget(name: String): Modifier = composed {

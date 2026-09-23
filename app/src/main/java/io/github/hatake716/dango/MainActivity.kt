@@ -61,9 +61,11 @@ private fun LockScreen(onUnlock: () -> Unit) {
             color = colors.textPrimary,
         )
         androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
-        androidx.compose.material3.Button(onClick = onUnlock) {
-            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(R.string.lock_unlock))
-        }
+        io.github.hatake716.dango.ui.browser.components.FinderPushButton(
+            text = androidx.compose.ui.res.stringResource(R.string.lock_unlock),
+            onClick = onUnlock,
+            style = io.github.hatake716.dango.ui.browser.components.FinderButtonStyle.Default,
+        )
     }
 }
 

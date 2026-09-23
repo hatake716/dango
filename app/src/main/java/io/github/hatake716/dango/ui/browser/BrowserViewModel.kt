@@ -1102,6 +1102,9 @@ class BrowserViewModel(
 
     fun consumeApkConfirm() = apkInstaller.consumeConfirm()
 
+    /** 画面の再開ごとに呼ぶ（確認画面から戻ったらインストール中の表示へ） */
+    fun onApkHostResumed() = apkInstaller.onHostResumed()
+
     fun onApkConfirmLaunchFailed() {
         apkInstaller.cancel()
         notify(R.string.apk_install_failed)

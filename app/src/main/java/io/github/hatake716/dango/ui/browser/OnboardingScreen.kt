@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,18 +53,17 @@ fun OnboardingScreen(
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(28.dp))
-        Button(
+        io.github.hatake716.dango.ui.browser.components.FinderPushButton(
+            text = stringResource(R.string.onboarding_grant),
             onClick = onGrant,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-        ) {
-            Text(stringResource(R.string.onboarding_grant))
-        }
-        Spacer(Modifier.height(8.dp))
-        TextButton(onClick = onSkip) {
-            Text(
-                text = stringResource(R.string.onboarding_skip),
-                color = colors.textSecondary,
-            )
-        }
+            style = io.github.hatake716.dango.ui.browser.components.FinderButtonStyle.Default,
+            modifier = Modifier.widthIn(min = 200.dp),
+        )
+        Spacer(Modifier.height(10.dp))
+        io.github.hatake716.dango.ui.browser.components.FinderPushButton(
+            text = stringResource(R.string.onboarding_skip),
+            onClick = onSkip,
+            modifier = Modifier.widthIn(min = 200.dp),
+        )
     }
 }

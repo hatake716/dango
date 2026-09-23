@@ -182,15 +182,21 @@ private fun BrowserScreenContent(
         }
     }
 
+    // スナックバーは別コルーチンで表示する。収集側が表示の終了を待つと、後続の
+    // 画面遷移系イベント（アプリを開く・設定を開く等）がその間止まってしまうため
+    val snackbarScope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
-                is BrowserEvent.Message ->
+                is BrowserEvent.Message -> snackbarScope.launch {
                     snackbarHostState.showSnackbar(context.getString(event.res))
-                is BrowserEvent.TrashDone -> {
+                }
+                is BrowserEvent.TrashDone -> snackbarScope.launch {
                     val result = snackbarHostState.showSnackbar(
                         message = context.getString(R.string.trash_done, event.count),
                         actionLabel = context.getString(R.string.undo),
+                        // 操作付きの既定は無期限で、閉じるまで後続の通知が表示されないため
+                        duration = androidx.compose.material3.SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) {
                         viewModel.undoTrash(event.undoIds)
@@ -228,7 +234,7 @@ private fun BrowserScreenContent(
                         viewModel.onInstallPermissionSettingsUnavailable()
                     }
                 }
-                is BrowserEvent.ApkInstalled -> {
+                is BrowserEvent.ApkInstalled -> snackbarScope.launch {
                     val launch = event.packageName?.let { ApkInstaller.launchIntent(context, it) }
                     val result = snackbarHostState.showSnackbar(
                         message = event.label?.let { context.getString(R.string.apk_install_done_named, it) }
@@ -244,7 +250,9 @@ private fun BrowserScreenContent(
                 is BrowserEvent.LaunchApp -> {
                     val launch = ApkInstaller.launchIntent(context, event.packageName)
                     if (launch == null || runCatching { context.startActivity(launch) }.isFailure) {
-                        snackbarHostState.showSnackbar(context.getString(R.string.apk_no_launcher))
+                        snackbarScope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.apk_no_launcher))
+                        }
                     }
                 }
             }
@@ -274,19 +282,22 @@ private fun BrowserScreenContent(
         trashFlights.remove(flight)
         val key = flight.entry.path.key
         flightScope.launch {
-            // 失敗して一覧に残った場合に備え、消えるのを待ってから（最大 2 秒）隠すのをやめる
-            withTimeoutOrNull(2_000) {
+            // 失敗して一覧に残った場合に備え、消えるのを待ってから（最大 2 秒）隠すのをやめる。
+            // 状態から消えた後も一覧側の消えるアニメ中は描かれるため、その分も待つ
+            val removed = withTimeoutOrNull(2_000) {
                 snapshotFlow {
                     val st = stateForFlights
                     st.entries.any { it.path.key == key } || st.listRows.any { it.entry.path.key == key }
                 }.first { present -> !present }
-            }
+            } != null
+            if (removed) delay(DangoMotion.TRASH_FLIGHT_MS + 100L)
             itemBounds?.let { it.hiddenKeys = it.hiddenKeys - key }
         }
     }
 
     // 「不明なアプリのインストール」の設定から戻ったら APK のインストールを続ける（SPEC §11）
     LifecycleResumeEffect(Unit) {
+        viewModel.onApkHostResumed()
         viewModel.onResumeCheckApkPermission()
         onPauseOrDispose { }
     }
@@ -962,7 +973,7 @@ private fun ContentArea(
             loadChildren = viewModel::loadChildren,
             onNavigate = { viewModel.navigateTo(it) },
             onTapFile = viewModel::onEntryTap,
-            onDoubleTapFile = viewModel::onEntryDoubleTap,
+            selectionMode = state.selectionMode,
         )
         return
     }

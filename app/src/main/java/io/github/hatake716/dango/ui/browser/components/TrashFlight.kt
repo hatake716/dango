@@ -87,11 +87,12 @@ private fun FlyingItem(
     } else {
         Offset(from.center.x, from.top + from.height * 0.42f)
     }
-    val target = remember {
-        registry.targets[TrashTargets.SIDEBAR]?.center
-            ?: registry.targets[TrashTargets.BUTTON]?.center
-            ?: Offset(origin.x + with(density) { 28.dp.toPx() }, origin.y + overlaySize.height - with(density) { 28.dp.toPx() })
+    val fixedTarget = remember {
+        registry.targets[TrashTargets.SIDEBAR]?.center ?: registry.targets[TrashTargets.BUTTON]?.center
     }
+    // 到達点が画面に無いときは左下へ。オーバーレイの大きさが測れてから決まるので毎回求める
+    val margin = with(density) { 28.dp.toPx() }
+    val target = fixedTarget ?: Offset(origin.x + margin, origin.y + overlaySize.height - margin)
     LaunchedEffect(Unit) {
         progress.animateTo(1f, DangoMotion.trashFlight())
         registry.trashLanded.intValue++

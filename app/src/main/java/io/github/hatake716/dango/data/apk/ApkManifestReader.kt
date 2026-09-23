@@ -38,10 +38,29 @@ internal object ApkManifestReader {
     private const val TYPE_INT_HEX = 0x11
     private const val TYPE_INT_BOOLEAN = 0x12
 
+    /** マニフェストの上限サイズ。細工された APK が宣言サイズで巨大な確保をさせないため */
+    private const val MAX_MANIFEST_BYTES = 4 shl 20
+
+    /** 属性 1 件の最小バイト数（ResXMLTree_attribute） */
+    private const val MIN_ATTR_SIZE = 20
+
     fun read(apkPath: String, platformSdk: Int): ApkManifest? = runCatching {
         val bytes = ZipFile(apkPath).use { zip ->
             val e = zip.getEntry("AndroidManifest.xml") ?: return null
-            zip.getInputStream(e).use { it.readBytes() }
+            if (e.size !in 8L..MAX_MANIFEST_BYTES.toLong()) return null
+            zip.getInputStream(e).use { input ->
+                val out = java.io.ByteArrayOutputStream(e.size.toInt())
+                val chunk = ByteArray(8192)
+                var total = 0
+                while (true) {
+                    val n = input.read(chunk)
+                    if (n < 0) break
+                    total += n
+                    if (total > MAX_MANIFEST_BYTES) return null
+                    out.write(chunk, 0, n)
+                }
+                out.toByteArray()
+            }
         }
         parse(ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN), platformSdk)
     }.onFailure { android.util.Log.d("dango", "apk manifest read failed: $it") }.getOrNull()
@@ -66,18 +85,31 @@ internal object ApkManifestReader {
             val chunkType = buf.getShort(pos).toInt() and 0xFFFF
             val headerSize = buf.getShort(pos + 2).toInt() and 0xFFFF
             val size = buf.getInt(pos + 4)
-            if (size <= 0) break
+            // 壊れた・細工されたチャンクはそこで打ち切る（範囲外の読み取りや巨大な確保をしない）
+            if (headerSize < 8 || size < headerSize || pos.toLong() + size > buf.limit()) break
             when (chunkType) {
-                RES_STRING_POOL -> strings = readStringPool(buf, pos)
+                RES_STRING_POOL -> strings = readStringPool(buf, pos, size)
                 RES_XML_RESOURCE_MAP -> resIds = IntArray((size - headerSize) / 4) {
                     buf.getInt(pos + headerSize + it * 4)
                 }
                 RES_XML_START_ELEMENT -> {
                     val ext = pos + headerSize
+                    if (ext + 20 > pos + size) {
+                        pos += size
+                        continue
+                    }
                     val tag = str(buf.getInt(ext + 4)) ?: ""
                     val attrStart = buf.getShort(ext + 8).toInt() and 0xFFFF
                     val attrSize = buf.getShort(ext + 10).toInt() and 0xFFFF
                     val attrCount = buf.getShort(ext + 12).toInt() and 0xFFFF
+                    val wanted = tag == "manifest" || tag == "uses-sdk" || tag == "application" ||
+                        tag == "uses-permission" || tag == "uses-permission-sdk-23"
+                    val fits = attrSize >= MIN_ATTR_SIZE &&
+                        attrStart.toLong() + attrCount.toLong() * attrSize <= (size - headerSize).toLong()
+                    if (!wanted || !fits) {
+                        pos += size
+                        continue
+                    }
                     val attrs = (0 until attrCount).map { i ->
                         val a = ext + attrStart + i * attrSize
                         val nameIdx = buf.getInt(a + 4)
@@ -132,18 +164,27 @@ internal object ApkManifestReader {
         )
     }
 
-    private fun readStringPool(buf: ByteBuffer, chunk: Int): List<String> {
+    private fun readStringPool(buf: ByteBuffer, chunk: Int, chunkSize: Int): List<String> {
         val headerSize = buf.getShort(chunk + 2).toInt() and 0xFFFF
+        if (headerSize < 28) return emptyList()
         val count = buf.getInt(chunk + 8)
+        if (count < 0 || headerSize + count.toLong() * 4 > chunkSize) return emptyList()
         val utf8 = buf.getInt(chunk + 16) and UTF8_FLAG != 0
         val stringsStart = chunk + buf.getInt(chunk + 20)
+        val end = chunk + chunkSize
         return List(count) { i ->
             val p = stringsStart + buf.getInt(chunk + headerSize + i * 4)
-            if (utf8) readUtf8(buf, p) else readUtf16(buf, p)
+            if (p < chunk || p >= end) {
+                ""
+            } else if (utf8) {
+                readUtf8(buf, p, end)
+            } else {
+                readUtf16(buf, p, end)
+            }
         }
     }
 
-    private fun readUtf8(buf: ByteBuffer, start: Int): String {
+    private fun readUtf8(buf: ByteBuffer, start: Int, end: Int): String {
         // 先頭は文字数（1〜2 バイト）、続いてバイト長（1〜2 バイト）
         var p = start + if (buf.get(start).toInt() and 0x80 != 0) 2 else 1
         val b0 = buf.get(p).toInt() and 0xFF
@@ -155,10 +196,11 @@ internal object ApkManifestReader {
             len = b0
             p += 1
         }
+        if (p + len > end) return ""
         return String(ByteArray(len) { buf.get(p + it) }, Charsets.UTF_8)
     }
 
-    private fun readUtf16(buf: ByteBuffer, start: Int): String {
+    private fun readUtf16(buf: ByteBuffer, start: Int, end: Int): String {
         val u0 = buf.getShort(start).toInt() and 0xFFFF
         val len: Int
         val p: Int
@@ -169,6 +211,7 @@ internal object ApkManifestReader {
             len = u0
             p = start + 2
         }
+        if (len < 0 || p.toLong() + len.toLong() * 2 > end) return ""
         return String(CharArray(len) { buf.getShort(p + it * 2).toInt().toChar() })
     }
 }
