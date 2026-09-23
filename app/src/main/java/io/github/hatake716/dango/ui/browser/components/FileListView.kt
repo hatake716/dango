@@ -176,6 +176,8 @@ fun FileListView(
         val previousKeys = remember { arrayOf<List<String>>(emptyList()) }
         val change = remember(rowKeys) { classifyRowChange(previousKeys[0], rowKeys) }
         SideEffect { previousKeys[0] = rowKeys }
+        // 出現アニメは各行につき一度だけ（スクロールで画面外から戻った行では再生しない）
+        val pendingReveal = remember(change) { change.inserted.toHashSet() }
         val placementSpec = when {
             LocalSuppressPlacement.current -> null
             change.isExpandOrCollapse -> DangoMotion.expand<IntOffset>()
@@ -214,7 +216,7 @@ fun FileListView(
                                 rows[index - 1].entry.path.key in selection,
                             joinBelow = selected && index < rows.lastIndex &&
                                 rows[index + 1].entry.path.key in selection,
-                            revealOnAppear = key in change.inserted,
+                            revealOnAppear = pendingReveal.remove(key),
                             renaming = key == renamingKey,
                             pulse = key in pastedKeys,
                             tags = tagsByKey[key] ?: emptySet(),
