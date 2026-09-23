@@ -100,6 +100,29 @@ import io.github.hatake716.dango.ui.browser.components.rememberItemBoundsRegistr
 import io.github.hatake716.dango.ui.info.InfoSheet
 import io.github.hatake716.dango.ui.quicklook.QuickLookHost
 import io.github.hatake716.dango.ui.theme.DangoTheme
+import io.github.hatake716.dango.ui.browser.components.LocalSuppressPlacement
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Snackbar
+import io.github.hatake716.dango.ui.browser.components.TrashFlight
+import io.github.hatake716.dango.ui.browser.components.TrashFlightOverlay
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.BiasAlignment
+import androidx.compose.ui.draw.shadow
+import io.github.hatake716.dango.ui.theme.DangoMotion
+import androidx.compose.foundation.layout.size
+
+/** 同時に飛ばす削除アニメーションの上限（大量削除で重くしない） */
+private const val MAX_TRASH_FLIGHTS = 24
 
 @Composable
 fun BrowserScreen(
@@ -185,6 +208,40 @@ private fun BrowserScreenContent(
         }
     }
 
+    // 削除した項目をゴミ箱へ吸い込ませる（SPEC §5: 300ms）。項目は飛んでいる間と
+    // 一覧から消えるまで元の位置に描かない（その場のフェードと二重にならないように）
+    val itemBounds = LocalItemBounds.current
+    val trashFlights = remember { mutableStateListOf<TrashFlight>() }
+    val flightScope = rememberCoroutineScope()
+    val stateForFlights by rememberUpdatedState(state)
+    LaunchedEffect(itemBounds) {
+        val registry = itemBounds ?: return@LaunchedEffect
+        var nextId = 0L
+        viewModel.trashFlights.collect { entries ->
+            val flying = entries.asSequence()
+                .mapNotNull { e -> registry[e.path.key]?.let { TrashFlight(nextId++, e, it) } }
+                .take(MAX_TRASH_FLIGHTS)
+                .toList()
+            if (flying.isEmpty()) return@collect
+            registry.hiddenKeys = registry.hiddenKeys + flying.map { it.entry.path.key }
+            trashFlights += flying
+        }
+    }
+    val onTrashFlightFinished: (TrashFlight) -> Unit = { flight ->
+        trashFlights.remove(flight)
+        val key = flight.entry.path.key
+        flightScope.launch {
+            // 失敗して一覧に残った場合に備え、消えるのを待ってから（最大 2 秒）隠すのをやめる
+            withTimeoutOrNull(2_000) {
+                snapshotFlow {
+                    val st = stateForFlights
+                    st.entries.any { it.path.key == key } || st.listRows.any { it.entry.path.key == key }
+                }.first { present -> !present }
+            }
+            itemBounds?.let { it.hiddenKeys = it.hiddenKeys - key }
+        }
+    }
+
     // 戻る操作の優先順位: Quick Look → リネーム → 検索 → 選択モード → サイドバー → 履歴
     BackHandler(
         enabled = state.quickLookIndex != null || state.renamingKey != null ||
@@ -222,11 +279,13 @@ private fun BrowserScreenContent(
         if (isWide) {
             // 幅600dp以上はサイドバー常時表示。トグルで開閉できる（SPEC §4.1, §5: 220ms）
             var sidebarVisible by rememberSaveable { mutableStateOf(true) }
+            val sidebarState = remember { MutableTransitionState(sidebarVisible) }
+            sidebarState.targetState = sidebarVisible
             Row(modifier = Modifier.fillMaxSize()) {
                 AnimatedVisibility(
-                    visible = sidebarVisible,
-                    enter = expandHorizontally(tween(220)) + fadeIn(tween(220)),
-                    exit = shrinkHorizontally(tween(220)) + fadeOut(tween(220)),
+                    visibleState = sidebarState,
+                    enter = expandHorizontally(DangoMotion.sidebar()) + fadeIn(DangoMotion.sidebar()),
+                    exit = shrinkHorizontally(DangoMotion.sidebar()) + fadeOut(DangoMotion.sidebar()),
                 ) {
                     Row {
                         SidebarContent(
@@ -244,9 +303,12 @@ private fun BrowserScreenContent(
                             onOpenTag = { viewModel.navigateTo(BrowserViewModel.tagPath(it)) },
                             onOpenCloudLink = { openCloudLink(context, it) },
                         )
-                        VerticalDivider(color = colors.divider, modifier = Modifier.fillMaxHeight())
+                        VerticalDivider(thickness = 0.5.dp, color = colors.divider, modifier = Modifier.fillMaxHeight())
                     }
                 }
+                // サイドバー開閉中はペイン幅が毎フレーム変わる。グリッドの列数変化ごとに
+                // 配置アニメが走ってアイコンが揺れるため、その間は配置アニメを止める
+                CompositionLocalProvider(LocalSuppressPlacement provides !sidebarState.isIdle) {
                 MainPane(
                     viewModel = viewModel,
                     state = state,
@@ -261,6 +323,7 @@ private fun BrowserScreenContent(
                     onDragStart = { draggingKeys = it },
                     modifier = Modifier.weight(1f),
                 )
+                }
             }
         } else {
             MainPane(
@@ -280,13 +343,14 @@ private fun BrowserScreenContent(
             // 縦持ちのサイドバー: コンテンツに重なるオーバーレイ（SPEC §4.1, §5: 220ms スライド）
             AnimatedVisibility(
                 visible = sidebarOpen,
-                enter = fadeIn(tween(220)),
-                exit = fadeOut(tween(220)),
+                enter = fadeIn(DangoMotion.sidebar()),
+                exit = fadeOut(DangoMotion.sidebar()),
             ) {
+                // Finder は暗幕を掛けないため、重なりが分かる程度の薄さに留める
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.32f))
+                        .background(Color.Black.copy(alpha = 0.16f))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -295,10 +359,10 @@ private fun BrowserScreenContent(
             }
             AnimatedVisibility(
                 visible = sidebarOpen,
-                enter = slideInHorizontally(tween(220)) { -it },
-                exit = slideOutHorizontally(tween(220)) { -it },
+                enter = slideInHorizontally(DangoMotion.sidebar()) { -it },
+                exit = slideOutHorizontally(DangoMotion.sidebar()) { -it },
             ) {
-                Row {
+                Row(modifier = Modifier.shadow(12.dp)) {
                     SidebarContent(
                         favorites = viewModel.sidebarFavorites,
                         locations = viewModel.sidebarLocations,
@@ -329,9 +393,17 @@ private fun BrowserScreenContent(
                             sidebarOpen = false
                         },
                     )
-                    VerticalDivider(color = colors.divider, modifier = Modifier.fillMaxHeight())
+                    VerticalDivider(thickness = 0.5.dp, color = colors.divider, modifier = Modifier.fillMaxHeight())
                 }
             }
+        }
+
+        if (itemBounds != null && trashFlights.isNotEmpty()) {
+            TrashFlightOverlay(
+                flights = trashFlights.toList(),
+                registry = itemBounds,
+                onFinished = onTrashFlightFinished,
+            )
         }
 
         // Quick Look（SPEC §5: 280ms spring。共有要素は近似）
@@ -639,12 +711,19 @@ private fun MainPane(
                 onToggleSearchGlobal = { viewModel.setSearchGlobal(!state.searchGlobal) },
                 onOpenSettings = viewModel::showSettings,
             )
-            HorizontalDivider(color = colors.divider)
+            HorizontalDivider(thickness = 0.5.dp, color = colors.divider)
             if (!hasFullAccess) {
                 NormalModeBanner(onRequestFullAccess)
             }
-            state.clipboard?.let { clipboard ->
-                if (!state.isTrash && !state.isArchive) {
+            // 出入りで一覧が段差なく伸縮するよう高さもアニメーションさせる
+            var lastClipboard by remember { mutableStateOf(state.clipboard) }
+            if (state.clipboard != null) lastClipboard = state.clipboard
+            AnimatedVisibility(
+                visible = state.clipboard != null && !state.isTrash && !state.isArchive,
+                enter = expandVertically(DangoMotion.bar()) + fadeIn(DangoMotion.bar()),
+                exit = shrinkVertically(DangoMotion.bar()) + fadeOut(DangoMotion.bar()),
+            ) {
+                lastClipboard?.let { clipboard ->
                     ClipboardBar(
                         clipboard = clipboard,
                         enabled = transfer == null,
@@ -723,7 +802,7 @@ private fun MainPane(
                 onInfo = viewModel::showInfoForSelection,
                 onRestore = viewModel::restoreSelected,
             )
-            HorizontalDivider(color = colors.divider)
+            HorizontalDivider(thickness = 0.5.dp, color = colors.divider)
             val connectionsForLabel by viewModel.connections.collectAsState()
             PathBar(
                 currentPath = state.currentPath,
@@ -736,7 +815,7 @@ private fun MainPane(
                 },
                 connectionLabel = { id -> connectionsForLabel.find { it.id == id }?.name },
             )
-            HorizontalDivider(color = colors.divider)
+            HorizontalDivider(thickness = 0.5.dp, color = colors.divider)
             StatusBar(
                 itemCount = if (state.viewMode == ViewMode.LIST) state.listRows.size else state.entries.size,
                 selectedCount = state.selection.size,
@@ -745,12 +824,15 @@ private fun MainPane(
                 onCancelTransfer = viewModel::cancelTransfer,
             )
         }
+        // macOS の HUD のような角丸の濃色パネル
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 64.dp),
-        )
+        ) { data ->
+            Snackbar(snackbarData = data, shape = RoundedCornerShape(10.dp))
+        }
     }
 }
 
@@ -796,17 +878,33 @@ private fun ContentArea(
         return
     }
     // フォルダを開く/戻るのズームアニメーション（SPEC §5: 200ms, EaseOutCubic。
-    // 新は 0.96→1.0 で拡大フェードイン、旧は縮小フェードアウト。戻るは逆再生＝同一の対称形）
+    // 新は 0.96→1.0 で拡大フェードイン、旧は縮小フェードアウト。戻るは逆再生＝同一の対称形）。
+    // 読み込みが速ければ実内容でズームさせるため、遷移の開始を読み込み完了まで
+    // （最大 NAV_HOLD_MAX_MS）待つ。待つ間は旧ペインが凍結表示のまま残る
+    val latestState by rememberUpdatedState(state)
+    var shownPath by remember { mutableStateOf(state.currentPath) }
+    LaunchedEffect(state.currentPath) {
+        val target = state.currentPath
+        if (target != shownPath) {
+            withTimeoutOrNull(DangoMotion.NAV_HOLD_MAX_MS) {
+                snapshotFlow { latestState.currentPath != target || !latestState.loading }
+                    .first { it }
+            }
+            shownPath = target
+        }
+    }
     AnimatedContent(
-        targetState = state.currentPath,
+        targetState = shownPath,
         transitionSpec = {
-            val spec = tween<Float>(durationMillis = 200, easing = EaseOutCubic)
-            when (state.navDirection) {
+            val spec = DangoMotion.folderNav<Float>()
+            when (latestState.navDirection) {
                 NavDirection.JUMP ->
                     fadeIn(spec).togetherWith(fadeOut(spec))
                 else ->
-                    (fadeIn(spec) + scaleIn(initialScale = 0.96f, animationSpec = spec))
-                        .togetherWith(fadeOut(spec) + scaleOut(targetScale = 0.96f, animationSpec = spec))
+                    (fadeIn(spec) + scaleIn(initialScale = DangoMotion.FOLDER_NAV_SCALE, animationSpec = spec))
+                        .togetherWith(
+                            fadeOut(spec) + scaleOut(targetScale = DangoMotion.FOLDER_NAV_SCALE, animationSpec = spec),
+                        )
             }
         },
         label = "folderTransition",
@@ -819,89 +917,130 @@ private fun ContentArea(
             frozen = state
         }
         val paneState = frozen
-        Box(modifier = Modifier.fillMaxSize()) {
-            when {
-                paneState.loading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center),
-                        color = colors.accent,
-                    )
+        // 読み込み中→内容、表示モードの切替などはペイン内で短くクロスフェードする
+        val contentKind = when {
+            paneState.loading -> PaneContent.LOADING
+            paneState.errorRes != null -> PaneContent.ERROR
+            paneState.entries.isEmpty() -> PaneContent.EMPTY
+            paneState.viewMode == ViewMode.GALLERY -> PaneContent.GALLERY
+            paneState.viewMode == ViewMode.LIST -> PaneContent.LIST
+            else -> PaneContent.ICON
+        }
+        AnimatedContent(
+            targetState = contentKind,
+            transitionSpec = {
+                if (initialState == PaneContent.LOADING || targetState == PaneContent.LOADING) {
+                    fadeIn(DangoMotion.fade()).togetherWith(fadeOut(DangoMotion.menuIn()))
+                } else {
+                    (fadeIn(DangoMotion.viewSwitch()) + scaleIn(DangoMotion.viewSwitch(), initialScale = 0.985f))
+                        .togetherWith(fadeOut(DangoMotion.viewSwitch()))
                 }
-                paneState.errorRes != null -> {
-                    Text(
-                        text = stringResource(paneState.errorRes),
-                        color = colors.textSecondary,
-                        fontSize = 14.sp,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                paneState.entries.isEmpty() -> {
-                    Text(
-                        text = stringResource(
-                            if (paneState.isTrash) R.string.trash_empty else R.string.empty_folder,
-                        ),
-                        color = colors.textSecondary,
-                        fontSize = 14.sp,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                paneState.viewMode == ViewMode.GALLERY -> {
-                    io.github.hatake716.dango.ui.browser.components.GalleryView(
-                        entries = paneState.entries,
-                        selection = paneState.selection,
-                        // ストリップのタップは常に「表示切替」（シングルタップで開く設定に左右されない）
-                        onSelect = viewModel::selectOnly,
-                        onOpen = viewModel::onEntryDoubleTap,
-                        // ギャラリーはタップが選択トグルではないため、長押しでトグルできる版を使う
-                        onLongPress = viewModel::onEntryLongPressToggle,
-                    )
-                }
-                paneState.viewMode == ViewMode.LIST -> {
-                    FileListView(
-                        rows = paneState.listRows,
-                        selection = paneState.selection,
-                        dateWidthDp = paneState.listDateWidthDp,
-                        sizeWidthDp = paneState.listSizeWidthDp,
-                        kindWidthDp = paneState.listKindWidthDp,
-                        onSetColumnWidths = viewModel::setListColumnWidths,
-                        onMarqueeSelect = viewModel::setSelectionByMarquee,
-                        onClearSelection = viewModel::clearSelectionOnBackgroundClick,
-                        sort = paneState.sort,
-                        renamingKey = paneState.renamingKey,
-                        pastedKeys = paneState.pastedKeys,
-                        tagsByKey = paneState.tagsByKey,
-                        hooks = hooks,
-                        onTap = viewModel::onEntryTap,
-                        onDoubleTap = viewModel::onEntryDoubleTap,
-                        onLongPress = viewModel::onEntryLongPress,
-                        onToggleExpand = viewModel::toggleExpand,
-                        onSetSortKey = viewModel::setSortKey,
-                        onCommitRename = viewModel::commitRename,
-                        onCancelRename = viewModel::cancelRename,
-                        showExpanders = !paneState.isTrash,
-                    )
-                }
-                else -> {
-                    IconGridView(
-                        entries = paneState.entries,
-                        selection = paneState.selection,
-                        iconSizeDp = paneState.iconSizeDp,
-                        renamingKey = paneState.renamingKey,
-                        pastedKeys = paneState.pastedKeys,
-                        tagsByKey = paneState.tagsByKey,
-                        hooks = hooks,
-                        onMarqueeSelect = viewModel::setSelectionByMarquee,
-                        onClearSelection = viewModel::clearSelectionOnBackgroundClick,
-                        onTap = viewModel::onEntryTap,
-                        onDoubleTap = viewModel::onEntryDoubleTap,
-                        onLongPress = viewModel::onEntryLongPress,
-                        onPinchZoom = viewModel::scaleIconSize,
-                        onCommitRename = viewModel::commitRename,
-                        onCancelRename = viewModel::cancelRename,
-                    )
+            },
+            label = "paneContent",
+            modifier = Modifier.fillMaxSize(),
+        ) { kind ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                when (kind) {
+                    PaneContent.LOADING -> DelayedSpinner(Modifier.align(Alignment.Center))
+                    PaneContent.ERROR -> {
+                        Text(
+                            text = paneState.errorRes?.let { stringResource(it) } ?: "",
+                            color = colors.textSecondary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.align(BiasAlignment(0f, -0.2f)),
+                        )
+                    }
+                    PaneContent.EMPTY -> {
+                        Text(
+                            text = stringResource(
+                                if (paneState.isTrash) R.string.trash_empty else R.string.empty_folder,
+                            ),
+                            color = colors.textSecondary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.align(BiasAlignment(0f, -0.2f)),
+                        )
+                    }
+                    PaneContent.GALLERY -> {
+                        io.github.hatake716.dango.ui.browser.components.GalleryView(
+                            entries = paneState.entries,
+                            selection = paneState.selection,
+                            // ストリップのタップは常に「表示切替」（シングルタップで開く設定に左右されない）
+                            onSelect = viewModel::selectOnly,
+                            onOpen = viewModel::onEntryDoubleTap,
+                            // ギャラリーはタップが選択トグルではないため、長押しでトグルできる版を使う
+                            onLongPress = viewModel::onEntryLongPressToggle,
+                        )
+                    }
+                    PaneContent.LIST -> {
+                        FileListView(
+                            rows = paneState.listRows,
+                            selection = paneState.selection,
+                            dateWidthDp = paneState.listDateWidthDp,
+                            sizeWidthDp = paneState.listSizeWidthDp,
+                            kindWidthDp = paneState.listKindWidthDp,
+                            onSetColumnWidths = viewModel::setListColumnWidths,
+                            onMarqueeSelect = viewModel::setSelectionByMarquee,
+                            onClearSelection = viewModel::clearSelectionOnBackgroundClick,
+                            sort = paneState.sort,
+                            renamingKey = paneState.renamingKey,
+                            pastedKeys = paneState.pastedKeys,
+                            tagsByKey = paneState.tagsByKey,
+                            hooks = hooks,
+                            onTap = viewModel::onEntryTap,
+                            onDoubleTap = viewModel::onEntryDoubleTap,
+                            onLongPress = viewModel::onEntryLongPress,
+                            onToggleExpand = viewModel::toggleExpand,
+                            onSetSortKey = viewModel::setSortKey,
+                            onCommitRename = viewModel::commitRename,
+                            onCancelRename = viewModel::cancelRename,
+                            showExpanders = !paneState.isTrash,
+                        )
+                    }
+                    PaneContent.ICON -> {
+                        IconGridView(
+                            entries = paneState.entries,
+                            selection = paneState.selection,
+                            iconSizeDp = paneState.iconSizeDp,
+                            renamingKey = paneState.renamingKey,
+                            pastedKeys = paneState.pastedKeys,
+                            tagsByKey = paneState.tagsByKey,
+                            hooks = hooks,
+                            onMarqueeSelect = viewModel::setSelectionByMarquee,
+                            onClearSelection = viewModel::clearSelectionOnBackgroundClick,
+                            onTap = viewModel::onEntryTap,
+                            onDoubleTap = viewModel::onEntryDoubleTap,
+                            onLongPress = viewModel::onEntryLongPress,
+                            onPinchZoom = viewModel::scaleIconSize,
+                            onCommitRename = viewModel::commitRename,
+                            onCancelRename = viewModel::cancelRename,
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+/** ペインに表示する内容の種類（切替時にクロスフェードする単位） */
+private enum class PaneContent { LOADING, ERROR, EMPTY, GALLERY, LIST, ICON }
+
+/**
+ * 遅れて出る小さなスピナー。ローカルの速いフォルダでは表示される前に読み込みが
+ * 終わるため、Finder のように一瞬のスピナーでちらつかない
+ */
+@Composable
+private fun DelayedSpinner(modifier: Modifier = Modifier) {
+    var show by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(DangoMotion.SPINNER_DELAY_MS.toLong())
+        show = true
+    }
+    AnimatedVisibility(visible = show, enter = fadeIn(DangoMotion.fade()), modifier = modifier) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(22.dp),
+            strokeWidth = 2.dp,
+            color = DangoTheme.colors.textSecondary,
+        )
     }
 }
 
@@ -929,5 +1068,5 @@ private fun NormalModeBanner(onRequestFullAccess: () -> Unit) {
             )
         }
     }
-    HorizontalDivider(color = colors.divider)
+    HorizontalDivider(thickness = 0.5.dp, color = colors.divider)
 }

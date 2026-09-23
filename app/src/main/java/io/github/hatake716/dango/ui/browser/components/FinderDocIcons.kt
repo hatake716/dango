@@ -15,7 +15,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -360,7 +363,9 @@ fun EntryKindIcon(
 
 /**
  * サムネイルがあれば表示し、無い・読み込めない（壊れた動画など）ときは種類アイコンに
- * 切り替える。失敗時に空白のまま残さないためのフォールバック
+ * 切り替える。失敗時に空白のまま残さないためのフォールバック。
+ * [fit] = true なら Finder と同じく縦横比を保って枠内に収め、画像の実際の外形に
+ * 細い縁と淡い影を付ける（正方形に切り抜かない）
  */
 @Composable
 fun EntryThumbnailOrIcon(
@@ -369,20 +374,57 @@ fun EntryThumbnailOrIcon(
     iconSize: Dp,
     shape: Shape,
     contentScale: ContentScale = ContentScale.Crop,
+    fit: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var failed by remember(entry.previewUri) { mutableStateOf(false) }
     if (entry.previewUri != null && !failed) {
-        AsyncImage(
-            model = entry.previewUri,
-            contentDescription = entry.name,
-            contentScale = contentScale,
-            onError = { failed = true },
-            modifier = modifier
-                .size(thumbSize)
-                .clip(shape),
-        )
+        if (fit) {
+            var aspect by remember(entry.previewUri) { mutableStateOf<Float?>(null) }
+            Box(modifier = modifier.size(thumbSize), contentAlignment = Alignment.Center) {
+                val a = aspect
+                val frame = when {
+                    a == null -> Modifier.size(thumbSize)
+                    a >= 1f -> Modifier.size(thumbSize, thumbSize / a)
+                    else -> Modifier.size(thumbSize * a, thumbSize)
+                }
+                AsyncImage(
+                    model = entry.previewUri,
+                    contentDescription = entry.name,
+                    contentScale = ContentScale.Fit,
+                    onSuccess = { state ->
+                        val s = state.painter.intrinsicSize
+                        if (s.isSpecified && s.width > 0f && s.height > 0f) aspect = s.width / s.height
+                    },
+                    onError = { failed = true },
+                    modifier = frame
+                        .then(
+                            if (a != null && thumbSize >= 32.dp) {
+                                Modifier.shadow(1.dp, shape, clip = false)
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .clip(shape)
+                        .then(
+                            if (a != null) Modifier.border(0.5.dp, ThumbBorder, shape) else Modifier,
+                        ),
+                )
+            }
+        } else {
+            AsyncImage(
+                model = entry.previewUri,
+                contentDescription = entry.name,
+                contentScale = contentScale,
+                onError = { failed = true },
+                modifier = modifier
+                    .size(thumbSize)
+                    .clip(shape),
+            )
+        }
     } else {
         EntryKindIcon(kind = entry.kind, name = entry.name, size = iconSize, modifier = modifier)
     }
 }
+
+private val ThumbBorder = Color(0x33000000)

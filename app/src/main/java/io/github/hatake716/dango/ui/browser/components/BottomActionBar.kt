@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import io.github.hatake716.dango.R
+import io.github.hatake716.dango.ui.theme.DangoMotion
 import io.github.hatake716.dango.ui.theme.DangoTheme
 
 /** 選択中に出るボトムアクションバー（SPEC §6.2） */
@@ -72,11 +75,14 @@ fun BottomActionBar(
     val colors = DangoTheme.colors
     AnimatedVisibility(
         visible = visible,
-        enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
-        exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(220)),
+        // 一覧側が段差なく縮むよう、スライドと同時に高さも伸縮させる
+        enter = expandVertically(DangoMotion.bar(), expandFrom = Alignment.Top) +
+            slideInVertically(DangoMotion.bar()) { it } + fadeIn(DangoMotion.bar()),
+        exit = shrinkVertically(DangoMotion.bar(), shrinkTowards = Alignment.Top) +
+            slideOutVertically(DangoMotion.bar()) { it } + fadeOut(DangoMotion.bar()),
     ) {
         Column {
-            HorizontalDivider(color = colors.divider)
+            HorizontalDivider(thickness = 0.5.dp, color = colors.divider)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -102,7 +108,13 @@ fun BottomActionBar(
                     ActionButton(Icons.Outlined.LibraryAdd, R.string.act_duplicate, enabled = selectionCount > 0, onClick = onDuplicate)
                     ActionButton(Icons.Outlined.DriveFileRenameOutline, R.string.act_rename, enabled = selectionCount > 0, onClick = onRename)
                     ActionButton(Icons.Outlined.FolderZip, R.string.act_compress, enabled = selectionCount > 0, onClick = onCompress)
-                    ActionButton(Icons.Outlined.Delete, R.string.act_delete, enabled = selectionCount > 0, onClick = onDelete)
+                    ActionButton(
+                        Icons.Outlined.Delete,
+                        R.string.act_delete,
+                        enabled = selectionCount > 0,
+                        onClick = onDelete,
+                        modifier = Modifier.registerAnimationTarget(TrashTargets.BUTTON),
+                    )
                     ActionButton(Icons.Outlined.Info, R.string.act_info, enabled = selectionCount == 1, onClick = onInfo)
                 }
             }
@@ -116,11 +128,12 @@ private fun ActionButton(
     labelRes: Int,
     enabled: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = DangoTheme.colors
     val tint = if (enabled) colors.textPrimary else colors.textSecondary.copy(alpha = 0.35f)
     Column(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = enabled, onClick = onClick)
             .width(64.dp)

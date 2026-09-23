@@ -2,6 +2,11 @@ package io.github.hatake716.dango.ui.browser.components
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -33,9 +38,21 @@ class ItemBoundsRegistry {
 
     /** ゴミ箱など、アニメーションの到達点として使う名前付きの位置 */
     val targets = HashMap<String, Rect>()
+
+    /**
+     * 飛行アニメーション中で元の位置には描かない項目。
+     * 項目側は graphicsLayer の中で読む（描画フェーズだけが更新され再コンポーズしない）
+     */
+    var hiddenKeys by mutableStateOf<Set<String>>(emptySet())
+
+    /** ゴミ箱へ項目が着地した回数（ゴミ箱アイコンを弾ませる合図） */
+    val trashLanded = mutableIntStateOf(0)
 }
 
 val LocalItemBounds = staticCompositionLocalOf<ItemBoundsRegistry?> { null }
+
+/** true の間は一覧の配置アニメーションを止める（ペイン幅が連続的に変わる間など） */
+val LocalSuppressPlacement = compositionLocalOf { false }
 
 @Composable
 fun rememberItemBoundsRegistry(): ItemBoundsRegistry = remember { ItemBoundsRegistry() }

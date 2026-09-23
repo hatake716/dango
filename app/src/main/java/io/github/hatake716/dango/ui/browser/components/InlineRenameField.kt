@@ -1,6 +1,11 @@
 package io.github.hatake716.dango.ui.browser.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -23,6 +28,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.data.fs.NameUtils
@@ -37,6 +43,7 @@ fun InlineRenameField(
     initialName: String,
     isDir: Boolean,
     textAlign: TextAlign,
+    fontSize: TextUnit = 12.sp,
     onCommit: (String) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -63,29 +70,44 @@ fun InlineRenameField(
         focusRequester.requestFocus()
     }
 
-    BasicTextField(
-        value = value,
-        onValueChange = { value = it },
-        textStyle = TextStyle(
-            color = colors.textPrimary,
-            fontSize = 12.sp,
-            textAlign = textAlign,
+    // Finder のリネーム欄: 白地＋細い枠、周囲に淡い青のフォーカスリング。
+    // 選択範囲（拡張子を除いた名前）はアクセントの淡い色で示す
+    val shape = RoundedCornerShape(4.dp)
+    CompositionLocalProvider(
+        LocalTextSelectionColors provides TextSelectionColors(
+            handleColor = colors.selectionFocused,
+            backgroundColor = colors.selectionFocused.copy(alpha = 0.28f),
         ),
-        cursorBrush = SolidColor(colors.selectionFocused),
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { commit() }),
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(colors.windowBackground)
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-            .focusRequester(focusRequester)
-            .onFocusChanged { state ->
-                if (state.isFocused) {
-                    hadFocus = true
-                } else if (hadFocus) {
-                    commit()
-                }
-            },
-    )
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = { value = it },
+            textStyle = LocalTextStyle.current.merge(
+                TextStyle(
+                    color = colors.textPrimary,
+                    fontSize = fontSize,
+                    textAlign = textAlign,
+                ),
+            ),
+            cursorBrush = SolidColor(colors.selectionFocused),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { commit() }),
+            modifier = modifier
+                .border(3.dp, colors.selectionFocused.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                .padding(2.dp)
+                .clip(shape)
+                .background(colors.windowBackground)
+                .border(0.5.dp, colors.selectionFocused.copy(alpha = 0.8f), shape)
+                .padding(horizontal = 4.dp, vertical = 1.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { state ->
+                    if (state.isFocused) {
+                        hadFocus = true
+                    } else if (hadFocus) {
+                        commit()
+                    }
+                },
+        )
+    }
 }

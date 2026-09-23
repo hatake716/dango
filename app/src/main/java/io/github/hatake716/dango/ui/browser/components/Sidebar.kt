@@ -1,5 +1,7 @@
 package io.github.hatake716.dango.ui.browser.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +45,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +56,7 @@ import io.github.hatake716.dango.R
 import io.github.hatake716.dango.data.db.ConnectionEntity
 import io.github.hatake716.dango.domain.model.FsPath
 import io.github.hatake716.dango.ui.browser.SidebarItem
+import io.github.hatake716.dango.ui.theme.DangoMotion
 import io.github.hatake716.dango.ui.theme.DangoTheme
 
 private val sidebarIcons: Map<String, ImageVector> = mapOf(
@@ -96,13 +102,11 @@ fun SidebarContent(
         favorites.forEach { item ->
             SidebarRow(item, selected = currentPath == item.path, onNavigate = onNavigate, onDropKeys = onDropKeys)
         }
-        Spacer(Modifier.height(14.dp))
         SidebarSectionLabel(stringResource(R.string.sidebar_locations))
         locations.forEach { item ->
             SidebarRow(item, selected = currentPath == item.path, onNavigate = onNavigate, onDropKeys = onDropKeys)
         }
         // ネットワーク（SPEC §4.3。長押し/右クリックで編集）
-        Spacer(Modifier.height(14.dp))
         SidebarSectionLabel(stringResource(R.string.sidebar_network))
         connections.forEach { conn ->
             NetworkRow(
@@ -116,39 +120,38 @@ fun SidebarContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .height(SIDEBAR_ROW_HEIGHT)
+                .clip(SidebarRowShape)
                 .swallowRightClick()
                 .clickable { onAddConnection() }
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = Icons.Outlined.Add,
                 contentDescription = null,
                 tint = colors.textSecondary,
-                modifier = Modifier.size(15.dp),
+                modifier = Modifier.size(17.dp),
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 text = stringResource(R.string.net_add_connection),
                 color = colors.textSecondary,
-                fontSize = 12.sp,
+                fontSize = 13.sp,
             )
         }
         // クラウド: 公式アプリへのリンク（SPEC §15 #9。直接統合はスコープ外）
         if (onOpenCloudLink != null) {
-            Spacer(Modifier.height(14.dp))
-            SidebarSectionLabel(stringResource(R.string.sidebar_cloud))
+                SidebarSectionLabel(stringResource(R.string.sidebar_cloud))
             CLOUD_LINKS.forEach { link ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(34.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .height(SIDEBAR_ROW_HEIGHT)
+                        .clip(SidebarRowShape)
                         .swallowRightClick()
                         .clickable { onOpenCloudLink(link) }
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Icon(
@@ -176,30 +179,30 @@ fun SidebarContent(
         }
         // タグ（SPEC §4.3: 色付きドット。タップでタグ検索）
         if (tagColors.isNotEmpty()) {
-            Spacer(Modifier.height(14.dp))
-            SidebarSectionLabel(stringResource(R.string.sidebar_tags))
+                SidebarSectionLabel(stringResource(R.string.sidebar_tags))
             tagColors.forEach { tag ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(28.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .height(SIDEBAR_ROW_HEIGHT)
+                        .clip(SidebarRowShape)
                         .swallowRightClick()
                         .clickable { onOpenTag(tag) }
-                        .padding(horizontal = 10.dp),
+                        .padding(horizontal = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
                         modifier = Modifier
                             .size(11.dp)
                             .clip(CircleShape)
-                            .background(TAG_COLOR_VALUES[tag] ?: colors.textSecondary),
+                            .background(TAG_COLOR_VALUES[tag] ?: colors.textSecondary)
+                            .border(0.5.dp, colors.textPrimary.copy(alpha = 0.15f), CircleShape),
                     )
-                    Spacer(Modifier.width(9.dp))
+                    Spacer(Modifier.width(11.dp))
                     Text(
                         text = stringResource(tagLabelRes(tag)),
                         color = colors.textPrimary,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                     )
                 }
             }
@@ -216,18 +219,23 @@ private fun NetworkRow(
     onEdit: () -> Unit,
 ) {
     val colors = DangoTheme.colors
+    val background by animateColorAsState(
+        targetValue = if (selected) colors.selectionUnfocused else Color.Transparent,
+        animationSpec = DangoMotion.selectionIn(),
+        label = "netRowBg",
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(34.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (selected) colors.selectionUnfocused else colors.sidebar)
+            .height(SIDEBAR_ROW_HEIGHT)
+            .clip(SidebarRowShape)
+            .background(background)
             .onRightClick { onEdit() }
             .combinedClickable(
                 onClick = onOpen,
                 onLongClick = onEdit,
             )
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -246,14 +254,19 @@ private fun NetworkRow(
     }
 }
 
+/** 行の高さ（Finder の中サイズ 28pt をタッチ向けに少し広げた値。全セクション共通） */
+private val SIDEBAR_ROW_HEIGHT = 32.dp
+private val SidebarRowShape = RoundedCornerShape(6.dp)
+
 @Composable
 private fun SidebarSectionLabel(text: String) {
+    // Finder の見出し: 11pt 太字の補助色。セクション間の余白は見出しの上に取る
     Text(
         text = text,
         color = DangoTheme.colors.textSecondary,
         fontSize = 11.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 10.dp, top = 12.dp, bottom = 3.dp),
     )
 }
 
@@ -266,19 +279,45 @@ private fun SidebarRow(
 ) {
     val colors = DangoTheme.colors
     var dropHover by remember { mutableStateOf(false) }
+    val background by animateColorAsState(
+        targetValue = when {
+            dropHover -> colors.selectionFocused.copy(alpha = 0.15f)
+            selected -> colors.selectionUnfocused
+            else -> Color.Transparent
+        },
+        animationSpec = DangoMotion.selectionIn(),
+        label = "sidebarRowBg",
+    )
+    val border by animateColorAsState(
+        targetValue = if (dropHover) colors.selectionFocused else Color.Transparent,
+        animationSpec = DangoMotion.selectionIn(),
+        label = "sidebarRowBorder",
+    )
+    val isTrash = item.id == "trash"
+    // ゴミ箱行: 削除した項目が吸い込まれた瞬間にアイコンを弾ませる
+    val iconScale = remember { Animatable(1f) }
+    val landed = LocalItemBounds.current?.trashLanded
+    if (isTrash && landed != null) {
+        val tick = landed.intValue
+        LaunchedEffect(tick) {
+            if (tick > 0) {
+                iconScale.animateTo(1.22f, DangoMotion.bounceUp())
+                iconScale.animateTo(1f, DangoMotion.bounceDown())
+            }
+        }
+    }
+    // ドロップ先ホバーでも軽く弾ませる（SPEC §5 ドラッグ）
+    LaunchedEffect(dropHover) {
+        if (dropHover) iconScale.animateTo(1.12f, DangoMotion.bounceUp())
+        iconScale.animateTo(1f, DangoMotion.bounceDown())
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(34.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(if (selected) colors.selectionUnfocused else colors.sidebar)
-            .then(
-                if (dropHover) {
-                    Modifier.border(2.dp, colors.selectionFocused, RoundedCornerShape(6.dp))
-                } else {
-                    Modifier
-                },
-            )
+            .height(SIDEBAR_ROW_HEIGHT)
+            .clip(SidebarRowShape)
+            .background(background)
+            .border(2.dp, border, SidebarRowShape)
             .entryDropTarget(
                 enabled = onDropKeys != null,
                 onHover = { dropHover = it },
@@ -286,14 +325,20 @@ private fun SidebarRow(
             )
             .swallowRightClick()
             .clickable { onNavigate(item.path) }
-            .padding(horizontal = 8.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = sidebarIcons[item.id] ?: Icons.Outlined.Description,
             contentDescription = null,
             tint = colors.accent,
-            modifier = Modifier.size(17.dp),
+            modifier = Modifier
+                .size(17.dp)
+                .then(if (isTrash) Modifier.registerAnimationTarget(TrashTargets.SIDEBAR) else Modifier)
+                .graphicsLayer {
+                    scaleX = iconScale.value
+                    scaleY = iconScale.value
+                },
         )
         Spacer(Modifier.width(8.dp))
         Text(

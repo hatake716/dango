@@ -37,8 +37,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -98,9 +100,9 @@ data class BrowserUiState(
     val showHidden: Boolean = false,
     val iconSizeDp: Int = 76,
     /** リスト表示の列幅（SPEC §4.4 列カスタマイズ。名前列は残り幅） */
-    val listDateWidthDp: Int = 128,
-    val listSizeWidthDp: Int = 76,
-    val listKindWidthDp: Int = 112,
+    val listDateWidthDp: Int = 104,
+    val listSizeWidthDp: Int = 64,
+    val listKindWidthDp: Int = 88,
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val navDirection: NavDirection = NavDirection.JUMP,
@@ -1249,6 +1251,14 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _trashFlights = MutableSharedFlow<List<FsEntry>>(extraBufferCapacity = 4)
+
+    /**
+     * ゴミ箱へ移す項目（SPEC §5 の吸い込みアニメーション用）。events はスナックバーの
+     * 結果待ちで止まることがあるため、即時に届く別経路にする
+     */
+    val trashFlights: SharedFlow<List<FsEntry>> = _trashFlights
+
     /** サイドバーのゴミ箱へのドロップ */
     fun dropKeysToTrash(keys: Set<String>) {
         val s = _state.value
@@ -1273,6 +1283,8 @@ class BrowserViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun deleteEntries(entries: List<FsEntry>) {
+        // 項目がまだ一覧に表示されているうちに通知する（ゴミ箱へ吸い込む演出の起点）
+        _trashFlights.tryEmit(entries)
         viewModelScope.launch {
             runCatching { trashManager.moveToTrash(entries) }
                 .onSuccess { ids ->

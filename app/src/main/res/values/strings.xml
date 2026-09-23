@@ -285,6 +285,7 @@
     <!-- 検索（M5。SPEC §6.7） -->
     <string name="cd_search">検索</string>
     <string name="search_hint">名前で検索…</string>
+    <string name="cd_clear_search">検索語を消去</string>
     <string name="search_scope_folder">このフォルダ</string>
     <string name="search_scope_device">デバイス全体</string>
     <string name="search_local_only">検索はローカルフォルダでのみ使えます</string>

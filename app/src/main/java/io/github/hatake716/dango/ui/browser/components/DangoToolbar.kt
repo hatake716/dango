@@ -1,6 +1,10 @@
 package io.github.hatake716.dango.ui.browser.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -8,6 +12,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Box
@@ -21,6 +29,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.ArrowDownward
@@ -44,7 +53,6 @@ import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -61,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -125,6 +134,17 @@ fun DangoToolbar(
     ) {
     // 幅が狭いと表示切替を1ボタンに畳み、フォルダ名に幅を回す（Finder と同じ振る舞い）
     val compact = maxWidth < COMPACT_TOOLBAR_WIDTH
+    val mode = when {
+        searchActive -> ToolbarMode.SEARCH
+        selectionMode -> ToolbarMode.SELECTION
+        else -> ToolbarMode.NORMAL
+    }
+    // 通常 / 選択 / 検索 の切替は短いクロスフェード
+    AnimatedContent(
+        targetState = mode,
+        transitionSpec = { fadeIn(DangoMotion.fade()).togetherWith(fadeOut(DangoMotion.menuIn())) },
+        label = "toolbarMode",
+    ) { current ->
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -132,7 +152,7 @@ fun DangoToolbar(
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (searchActive) {
+        if (current == ToolbarMode.SEARCH) {
             // 検索モード（SPEC §6.7: 現在フォルダ/デバイス全体のトグル付き）
             ToolbarIconButton(
                 icon = Icons.Outlined.Close,
@@ -141,43 +161,67 @@ fun DangoToolbar(
             )
             val focusRequester = remember { FocusRequester() }
             LaunchedEffect(Unit) { focusRequester.requestFocus() }
-            BasicTextField(
-                value = searchQuery,
-                onValueChange = onSearchQuery,
-                textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp),
-                cursorBrush = SolidColor(colors.selectionFocused),
-                singleLine = true,
-                decorationBox = { inner ->
-                    Box {
-                        if (searchQuery.isEmpty()) {
-                            Text(
-                                stringResource(R.string.search_hint),
-                                color = colors.textSecondary,
-                                fontSize = 14.sp,
-                            )
-                        }
-                        inner()
-                    }
-                },
+            // Finder の検索フィールド: 角丸の薄いグレー地に虫眼鏡、入力があれば ⊗ で消去
+            val dark = colors.windowBackground.luminance() < 0.5f
+            Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 6.dp)
-                    .focusRequester(focusRequester),
-            )
-            FilterChip(
-                selected = searchGlobal,
-                onClick = onToggleSearchGlobal,
-                label = {
-                    Text(
-                        stringResource(
-                            if (searchGlobal) R.string.search_scope_device else R.string.search_scope_folder,
-                        ),
-                        fontSize = 11.sp,
-                    )
-                },
-                modifier = Modifier.padding(end = 4.dp),
-            )
-        } else if (selectionMode) {
+                    .padding(horizontal = 4.dp)
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(colors.textPrimary.copy(alpha = if (dark) 0.10f else 0.06f))
+                    .padding(start = 8.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = null,
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQuery,
+                    textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp, letterSpacing = (-0.2).sp),
+                    cursorBrush = SolidColor(colors.selectionFocused),
+                    singleLine = true,
+                    decorationBox = { inner ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    stringResource(R.string.search_hint),
+                                    color = colors.textSecondary,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                )
+                            }
+                            inner()
+                        }
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
+                )
+                if (searchQuery.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .clickable(role = Role.Button) { onSearchQuery("") },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Cancel,
+                            contentDescription = stringResource(R.string.cd_clear_search),
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+            SearchScopeToggle(global = searchGlobal, onToggle = onToggleSearchGlobal)
+        } else if (current == ToolbarMode.SELECTION) {
             ToolbarIconButton(
                 icon = Icons.Outlined.Close,
                 contentDescription = stringResource(R.string.cd_exit_selection),
@@ -229,7 +273,7 @@ fun DangoToolbar(
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = (-0.2).sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.MiddleEllipsis,
             )
             if (compact) {
                 ViewModePullDown(viewMode, onSetViewMode)
@@ -260,9 +304,65 @@ fun DangoToolbar(
         }
     }
     }
+    }
 }
 
+private enum class ToolbarMode { NORMAL, SELECTION, SEARCH }
+
 private val COMPACT_TOOLBAR_WIDTH = 560.dp
+
+/**
+ * 検索範囲（このフォルダ / このデバイス）の小さなセグメント。
+ * Finder の検索範囲バー「検索: このMac | "フォルダ"」に相当する
+ */
+@Composable
+private fun SearchScopeToggle(global: Boolean, onToggle: () -> Unit) {
+    val colors = DangoTheme.colors
+    val dark = colors.windowBackground.luminance() < 0.5f
+    val options = listOf(
+        stringResource(R.string.search_scope_folder) to false,
+        stringResource(R.string.search_scope_device) to true,
+    )
+    Row(
+        modifier = Modifier
+            .padding(end = 4.dp)
+            .height(28.dp)
+            .clip(RoundedCornerShape(7.dp))
+            .background(colors.textPrimary.copy(alpha = if (dark) 0.10f else 0.06f))
+            .padding(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        options.forEach { (label, isGlobal) ->
+            val selected = global == isGlobal
+            val bg by animateColorAsState(
+                targetValue = when {
+                    !selected -> Color.Transparent
+                    dark -> colors.selectionUnfocused
+                    else -> colors.windowBackground
+                },
+                animationSpec = DangoMotion.fade(),
+                label = "scopeBg",
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .then(if (selected && !dark) Modifier.shadow(1.dp, RoundedCornerShape(6.dp)) else Modifier)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(bg)
+                    .selectable(selected = selected, role = Role.Tab) { if (!selected) onToggle() }
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    color = if (selected) colors.textPrimary else colors.textSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun SelectionMenuButton(onInvertSelection: () -> Unit) {

@@ -31,6 +31,22 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isTertiaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 
 /**
  * ドラッグ&ドロップの共通実装（SPEC §6.3, §4.3, §4.5, §5）。
@@ -127,24 +143,26 @@ private suspend fun AwaitPointerEventScope.awaitLongPressAllowingBoundsExit(
 @Suppress("DEPRECATION")
 @Composable
 fun Modifier.entryDragSource(
+    dragImage: DragImage,
     onMouseDragStart: (() -> Unit)? = null,
     transferKeys: () -> Set<String>?,
 ): Modifier {
     val currentKeys = rememberUpdatedState(transferKeys)
     val currentMouseStart = rememberUpdatedState(onMouseDragStart)
-    val shadowColor = DangoTheme.colors.selectionFocused
+    val currentImage = rememberUpdatedState(dragImage)
+    val textColor = DangoTheme.colors.textPrimary
+    val textMeasurer = rememberTextMeasurer()
+    // ドラッグ像の件数。シャドウは startTransfer の中で同期的に描かれるため直前に入れる
+    val dragCount = remember { intArrayOf(1) }
     // 既定のドラッグシャドウ（decoration 引数なしのオーバーロード）は使わない。
     // 既定実装はノードの描画全体を「録画済み GraphicsLayer の再生」に差し替える
     // （シャドウ用キャッシュ。foundation の CacheDrawScopeDragShadowCallback）。
     // Android 17 ではレイアウト変更後にこのキャッシュが再録画されず、列幅ドラッグ中に
-    // 行の描画だけが静止する。シャドウを自前の軽量描画にすればキャッシュ層自体が
+    // 行の描画だけが静止する。シャドウを自前の描画にすればキャッシュ層自体が
     // 作られず、内容は通常経路で描画される
     return dragAndDropSource(
         drawDragDecoration = {
-            drawRoundRect(
-                color = shadowColor.copy(alpha = 0.35f),
-                cornerRadius = CornerRadius(8.dp.toPx()),
-            )
+            drawDragImage(currentImage.value, dragCount[0], textMeasurer, textColor)
         },
         block = {
         awaitEachGesture {
@@ -179,6 +197,7 @@ fun Modifier.entryDragSource(
                         val keys = currentKeys.value()
                         if (!keys.isNullOrEmpty()) {
                             drag.consume()
+                            dragCount[0] = keys.size
                             startTransfer(Dnd.transferData(keys))
                         }
                     }
@@ -190,13 +209,114 @@ fun Modifier.entryDragSource(
                     val longPress = awaitLongPressAllowingBoundsExit(down.id)
                     if (longPress != null) {
                         val keys = currentKeys.value()
-                        if (!keys.isNullOrEmpty()) startTransfer(Dnd.transferData(keys))
+                        if (!keys.isNullOrEmpty()) {
+                            dragCount[0] = keys.size
+                            startTransfer(Dnd.transferData(keys))
+                        }
                     }
                 }
             }
         }
         },
     )
+}
+
+/** ドラッグ像のレイアウト（アイコン表示のセル / リスト・カラムの行） */
+enum class DragImageStyle { GRID, ROW }
+
+/**
+ * ドラッグ像の内容。Finder と同じく半透明のアイコン＋名前で、複数項目なら
+ * アイコン右上に赤い件数バッジを付ける（SPEC §5）。
+ * GRID の [iconSize]/[iconTop] はセル内のアイコンの描画サイズと上端位置
+ */
+class DragImage(
+    val icon: Painter,
+    val name: String,
+    val style: DragImageStyle,
+    val iconSize: Dp = 18.dp,
+    val iconTop: Dp = 0.dp,
+)
+
+private const val DRAG_ICON_ALPHA = 0.75f
+private val BadgeRed = Color(0xFFFF3B30)
+
+private fun DrawScope.drawDragImage(
+    image: DragImage,
+    count: Int,
+    measurer: TextMeasurer,
+    textColor: Color,
+) {
+    val iconPx: Float
+    val iconLeft: Float
+    val iconTopPx: Float
+    when (image.style) {
+        DragImageStyle.GRID -> {
+            iconPx = image.iconSize.toPx().coerceAtMost(size.width)
+            iconLeft = (size.width - iconPx) / 2f
+            iconTopPx = image.iconTop.toPx()
+        }
+        DragImageStyle.ROW -> {
+            iconPx = image.iconSize.toPx()
+            iconLeft = 10.dp.toPx()
+            iconTopPx = (size.height - iconPx) / 2f
+        }
+    }
+    translate(iconLeft, iconTopPx) {
+        with(image.icon) { draw(Size(iconPx, iconPx), alpha = DRAG_ICON_ALPHA) }
+    }
+    val nameStyle = TextStyle(
+        color = textColor.copy(alpha = 0.85f),
+        fontSize = if (image.style == DragImageStyle.GRID) 12.sp else 13.sp,
+    )
+    when (image.style) {
+        DragImageStyle.GRID -> {
+            val maxW = (size.width - 8.dp.toPx()).toInt().coerceAtLeast(1)
+            val layout = measurer.measure(
+                text = image.name,
+                style = nameStyle.copy(textAlign = TextAlign.Center),
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                constraints = Constraints(maxWidth = maxW),
+            )
+            val top = iconTopPx + iconPx + 4.dp.toPx()
+            if (top + layout.size.height <= size.height) {
+                drawText(layout, topLeft = Offset((size.width - layout.size.width) / 2f, top))
+            }
+        }
+        DragImageStyle.ROW -> {
+            val left = iconLeft + iconPx + 8.dp.toPx()
+            val maxW = (size.width * 0.6f - left).toInt().coerceAtLeast(1)
+            val layout = measurer.measure(
+                text = image.name,
+                style = nameStyle,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                constraints = Constraints(maxWidth = maxW),
+            )
+            drawText(layout, topLeft = Offset(left, (size.height - layout.size.height) / 2f))
+        }
+    }
+    if (count > 1) {
+        val label = measurer.measure(
+            text = count.toString(),
+            style = TextStyle(color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold),
+        )
+        val r = maxOf(9.dp.toPx(), label.size.width / 2f + 5.dp.toPx())
+        val center = Offset(
+            (iconLeft + iconPx).coerceAtMost(size.width - r),
+            (iconTopPx).coerceAtLeast(r),
+        )
+        drawRoundRect(
+            color = BadgeRed,
+            topLeft = Offset(center.x - r, center.y - 9.dp.toPx()),
+            size = Size(r * 2, 18.dp.toPx()),
+            cornerRadius = CornerRadius(9.dp.toPx()),
+        )
+        drawText(
+            label,
+            topLeft = Offset(center.x - label.size.width / 2f, center.y - label.size.height / 2f),
+        )
+    }
 }
 
 /**

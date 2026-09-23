@@ -1,5 +1,9 @@
 package io.github.hatake716.dango.ui.browser.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import io.github.hatake716.dango.ui.theme.DangoMotion
+
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
@@ -154,18 +158,30 @@ fun Modifier.recordClickModifiers(holder: ClickModifierState): Modifier = pointe
     }
 }
 
-/** コンテナ内の最前面に置く: 選択矩形の描画（塗り＋枠。SPEC §9 のアクセント色） */
+/**
+ * コンテナ内の最前面に置く: 選択矩形の描画（Finder と同じく中立のグレーの半透明＋細い枠）。
+ * ボタンを離すと短くフェードして消える
+ */
 @Composable
 fun MarqueeOverlay(state: MarqueeState, color: Color, modifier: Modifier = Modifier) {
-    val rect = state.rect ?: return
+    val current = state.rect
+    var lastRect by remember { mutableStateOf<Rect?>(null) }
+    if (current != null) lastRect = current
+    val alpha by animateFloatAsState(
+        targetValue = if (current != null) 1f else 0f,
+        animationSpec = if (current != null) snap() else DangoMotion.menuOut(),
+        label = "marqueeAlpha",
+    )
+    val rect = lastRect ?: return
+    if (alpha <= 0f) return
     androidx.compose.foundation.layout.Box(
         modifier = modifier.drawBehind {
-            drawRect(color = color.copy(alpha = 0.12f), topLeft = rect.topLeft, size = rect.size)
+            drawRect(color = color.copy(alpha = 0.15f * alpha), topLeft = rect.topLeft, size = rect.size)
             drawRect(
-                color = color.copy(alpha = 0.8f),
+                color = color.copy(alpha = 0.6f * alpha),
                 topLeft = rect.topLeft,
                 size = rect.size,
-                style = Stroke(width = 1.dp.toPx()),
+                style = Stroke(width = 1.dp.toPx().coerceAtLeast(1f) * 0.75f),
             )
         },
     )

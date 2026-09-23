@@ -47,6 +47,12 @@ object DangoMotion {
     const val EXPAND_MS = 180
     fun <T> expand(): FiniteAnimationSpec<T> = tween(EXPAND_MS, easing = MacEase)
 
+    /** 折りたたみで子行を消す（下の行が詰める前に消えるよう短く） */
+    fun <T> collapseOut(): FiniteAnimationSpec<T> = tween(110, easing = LinearEasing)
+
+    /** 一覧から消える項目のフェード（削除・移動） */
+    fun <T> trashFade(): FiniteAnimationSpec<T> = tween(TRASH_FLIGHT_MS, easing = MacEase)
+
     /** サイドバー開閉 */
     fun <T> sidebar(): FiniteAnimationSpec<T> = tween(220, easing = MacEase)
 

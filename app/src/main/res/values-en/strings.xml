@@ -259,6 +259,7 @@
 
     <string name="cd_search">Search</string>
     <string name="search_hint">Search by name…</string>
+    <string name="cd_clear_search">Clear search</string>
     <string name="search_scope_folder">This folder</string>
     <string name="search_scope_device">Entire device</string>
     <string name="search_local_only">Search is available in local folders only</string>

@@ -28,18 +28,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowDownward
-import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,12 +52,20 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -69,11 +80,11 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import io.github.hatake716.dango.R
 import io.github.hatake716.dango.domain.model.SortKey
 import io.github.hatake716.dango.domain.model.SortSpec
 import io.github.hatake716.dango.ui.browser.TreeRow
+import io.github.hatake716.dango.ui.theme.DangoMotion
 import io.github.hatake716.dango.ui.theme.DangoTheme
 import io.github.hatake716.dango.ui.util.formatDateTime
 import io.github.hatake716.dango.ui.util.formatSize
@@ -159,14 +170,29 @@ fun FileListView(
         // 伝播は環境によって働かず「ヘッダだけ動いて行が止まる」ことがあるため、
         // 各行に State を読ませて確実にドラッグへ追従させる
         val widthsState = rememberUpdatedState(ListColumnWidths(dateWidth, sizeWidth, kindWidth))
+        // 行集合の変化が「フォルダの展開/折りたたみ」か（並べ替えではないか）を判定し、
+        // 展開で新しく現れた行だけ上から出現させる（SPEC §5: 180ms）
+        val rowKeys = remember(rows) { rows.map { it.entry.path.key } }
+        val previousKeys = remember { arrayOf<List<String>>(emptyList()) }
+        val change = remember(rowKeys) { classifyRowChange(previousKeys[0], rowKeys) }
+        SideEffect { previousKeys[0] = rowKeys }
+        val placementSpec = when {
+            LocalSuppressPlacement.current -> null
+            change.isExpandOrCollapse -> DangoMotion.expand<IntOffset>()
+            else -> DangoMotion.reorder()
+        }
+        val listState = rememberLazyListState()
         Column(modifier = Modifier.fillMaxSize()) {
             ListHeader(sort, onSetSortKey, widthsState, onSetColumnWidths)
-            HorizontalDivider(color = colors.divider)
+            HorizontalDivider(thickness = 0.5.dp, color = colors.divider)
             // ラバーバンド選択（SPEC §6.2）: マウスの空白ドラッグで矩形選択
             val marquee = rememberMarqueeState()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    // 縞はテーブル側に固定して描く（Finder 同様）。行に持たせると並べ替え・
+                    // 展開で動く行と一緒に縞も流れてちらつくため。空き領域の下端まで続ける
+                    .drawBehind { drawListStripes(listState, colors.altRow) }
                     .marqueeContainer(marquee)
                     .marqueeSelectSource(
                         marquee,
@@ -176,15 +202,22 @@ fun FileListView(
                         onClearSelection = onClearSelection,
                     ),
             ) {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     itemsIndexed(rows, key = { _, r -> r.entry.path.key }) { index, row ->
+                        val key = row.entry.path.key
+                        val selected = key in selection
                         ListRow(
                             row = row,
-                            selected = row.entry.path.key in selection,
-                            isAlt = index % 2 == 1,
-                            renaming = row.entry.path.key == renamingKey,
-                            pulse = row.entry.path.key in pastedKeys,
-                            tags = tagsByKey[row.entry.path.key] ?: emptySet(),
+                            selected = selected,
+                            // 連続する選択行は1つの角丸ブロックにつなげる（Finder の inset 表示）
+                            joinAbove = selected && index > 0 &&
+                                rows[index - 1].entry.path.key in selection,
+                            joinBelow = selected && index < rows.lastIndex &&
+                                rows[index + 1].entry.path.key in selection,
+                            revealOnAppear = key in change.inserted,
+                            renaming = key == renamingKey,
+                            pulse = key in pastedKeys,
+                            tags = tagsByKey[key] ?: emptySet(),
                             hooks = hooks,
                             widths = widthsState,
                             showExpander = showExpanders,
@@ -196,18 +229,72 @@ fun FileListView(
                             onCancelRename = onCancelRename,
                             modifier = Modifier
                                 .animateItem(
-                                    placementSpec = tween(250),
-                                    fadeInSpec = tween(180),
-                                    fadeOutSpec = tween(300),
+                                    placementSpec = placementSpec,
+                                    fadeInSpec = DangoMotion.expand(),
+                                    // 折りたたみでは子を先に消し、その上を下の行が詰める
+                                    fadeOutSpec = if (change.isExpandOrCollapse) {
+                                        DangoMotion.collapseOut()
+                                    } else {
+                                        DangoMotion.trashFade()
+                                    },
                                 )
-                                .marqueeItemBounds(marquee, row.entry.path.key)
-                                .registerItemBounds(row.entry.path.key),
+                                .marqueeItemBounds(marquee, key)
+                                .registerItemBounds(key),
                         )
                     }
                 }
-                MarqueeOverlay(marquee, colors.selectionFocused, Modifier.matchParentSize())
+                MarqueeOverlay(marquee, colors.textSecondary, Modifier.matchParentSize())
             }
         }
+    }
+}
+
+private val ROW_HEIGHT = 32.dp
+
+/** 行の選択背景・縞の左右インセットと角丸（Big Sur 以降の inset テーブル） */
+private val ROW_INSET = 6.dp
+private val ROW_RADIUS = 6.dp
+
+/** 行集合の差分。展開/折りたたみ（相対順序を保った挿入・削除のみ）かと、挿入された行 */
+private class RowChange(val isExpandOrCollapse: Boolean, val inserted: Set<String>)
+
+private fun classifyRowChange(before: List<String>, after: List<String>): RowChange {
+    if (before.isEmpty() || before == after) return RowChange(false, emptySet())
+    val beforeSet = before.toHashSet()
+    val afterSet = after.toHashSet()
+    val keptBefore = before.filter { it in afterSet }
+    val keptAfter = after.filter { it in beforeSet }
+    // 共通部分の並びが変わっていれば並べ替え（または別フォルダへの遷移）
+    if (keptBefore != keptAfter || keptAfter.isEmpty()) return RowChange(false, emptySet())
+    val inserted = after.filterTo(HashSet()) { it !in beforeSet }
+    val removed = before.any { it !in afterSet }
+    // 挿入と削除が同時に起きるのは再読み込み等なので、展開扱いにしない
+    return if (inserted.isNotEmpty() && removed) {
+        RowChange(false, emptySet())
+    } else {
+        RowChange(true, inserted)
+    }
+}
+
+/** 表示中の行位置に合わせて縞（交互行）を描く。行が無い下端の空きにも続ける */
+private fun DrawScope.drawListStripes(state: LazyListState, color: Color) {
+    val rowPx = ROW_HEIGHT.roundToPx().toFloat()
+    if (rowPx <= 0f) return
+    val inset = ROW_INSET.toPx()
+    val radius = CornerRadius(ROW_RADIUS.toPx())
+    var index = state.firstVisibleItemIndex
+    var y = -state.firstVisibleItemScrollOffset.toFloat()
+    while (y < size.height) {
+        if (index % 2 == 1) {
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(inset, y),
+                size = Size(size.width - inset * 2, rowPx),
+                cornerRadius = radius,
+            )
+        }
+        y += rowPx
+        index++
     }
 }
 
@@ -232,7 +319,7 @@ private fun ListHeader(
         modifier = Modifier
             .fillMaxWidth()
             .height(28.dp)
-            .background(colors.toolbar)
+            .background(colors.windowBackground)
             .onSizeChanged { headerWidthPx = it.width },
     ) {
         Row(
@@ -370,6 +457,8 @@ private fun HeaderCell(
 ) {
     val colors = DangoTheme.colors
     val active = sort.key == key
+    // Finder の列ヘッダ: 11pt の補助色。並べ替え中の列は本文色になり、
+    // セルの末尾に小さなシェブロン（∧/∨）が付く
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
@@ -382,17 +471,20 @@ private fun HeaderCell(
         Text(
             text = label,
             color = if (active) colors.textPrimary else colors.textSecondary,
-            fontSize = 12.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = 11.5.sp,
+            fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = if (textAlign == TextAlign.End) Modifier else Modifier.weight(1f, fill = false),
         )
         if (active) {
-            Spacer(Modifier.width(2.dp))
+            if (textAlign != TextAlign.End) Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(3.dp))
             Icon(
-                imageVector = if (sort.ascending) Icons.Outlined.ArrowUpward else Icons.Outlined.ArrowDownward,
+                imageVector = if (sort.ascending) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                 contentDescription = null,
                 tint = colors.textSecondary,
-                modifier = Modifier.size(11.dp),
+                modifier = Modifier.size(13.dp),
             )
         }
     }
@@ -403,7 +495,9 @@ private fun HeaderCell(
 private fun ListRow(
     row: TreeRow,
     selected: Boolean,
-    isAlt: Boolean,
+    joinAbove: Boolean,
+    joinBelow: Boolean,
+    revealOnAppear: Boolean,
     renaming: Boolean,
     pulse: Boolean,
     tags: Set<String>,
@@ -424,33 +518,61 @@ private fun ListRow(
     // 読むため、ドラッグ中の幅変化は行の再コンポーズなしにレイアウトへ直接伝わる
     // クリック時の修飾キー（Ctrl/Shift）は自分の down 時点で記録して onTap に添える
     val clickMods = remember { ClickModifierState() }
+    var dropHover by remember { mutableStateOf(false) }
+    val selectionSpec = if (selected) DangoMotion.selectionIn<Color>() else DangoMotion.selectionOut()
     val background by animateColorAsState(
         targetValue = when {
             selected -> colors.selectionFocused
-            isAlt -> colors.altRow
+            dropHover -> colors.selectionFocused.copy(alpha = 0.14f)
             else -> Color.Transparent
         },
-        animationSpec = tween(80),
+        animationSpec = selectionSpec,
         label = "rowBg",
     )
-    val primary = if (selected) colors.onSelection else colors.textPrimary
-    val secondary = if (selected) colors.onSelection.copy(alpha = 0.85f) else colors.textSecondary
+    val primary by animateColorAsState(
+        targetValue = if (selected) colors.onSelection else colors.textPrimary,
+        animationSpec = selectionSpec,
+        label = "rowText",
+    )
+    val secondary by animateColorAsState(
+        targetValue = if (selected) colors.onSelection.copy(alpha = 0.85f) else colors.textSecondary,
+        animationSpec = selectionSpec,
+        label = "rowText2",
+    )
+    val dropBorder by animateColorAsState(
+        targetValue = if (dropHover) colors.selectionFocused else Color.Transparent,
+        animationSpec = DangoMotion.selectionIn(),
+        label = "rowDrop",
+    )
+    val shape = RoundedCornerShape(
+        topStart = if (joinAbove) 0.dp else ROW_RADIUS,
+        topEnd = if (joinAbove) 0.dp else ROW_RADIUS,
+        bottomStart = if (joinBelow) 0.dp else ROW_RADIUS,
+        bottomEnd = if (joinBelow) 0.dp else ROW_RADIUS,
+    )
     // ▸ の 90° 回転（SPEC §5: 180ms）
     val chevronAngle by animateFloatAsState(
         targetValue = if (row.expanded) 90f else 0f,
-        animationSpec = tween(180),
+        animationSpec = DangoMotion.expand(),
         label = "chevron",
     )
+    // 展開で現れた子行は少し上から降りてくる（高さが伸びて見えるように）
+    val reveal = remember { Animatable(if (revealOnAppear) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (reveal.value < 1f) reveal.animateTo(1f, DangoMotion.expand())
+    }
     val pulseScale = remember { Animatable(1f) }
     LaunchedEffect(pulse) {
         if (pulse) {
-            pulseScale.animateTo(1.05f, tween(125))
-            pulseScale.animateTo(1f, tween(125))
+            pulseScale.animateTo(DangoMotion.PULSE_SCALE, tween(DangoMotion.PULSE_HALF_MS))
+            pulseScale.animateTo(1f, tween(DangoMotion.PULSE_HALF_MS))
+        } else if (pulseScale.value != 1f) {
+            // 途中で打ち切られても拡大したまま残さない
+            pulseScale.animateTo(1f, DangoMotion.bounceDown())
         }
     }
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
-    var dropHover by remember { mutableStateOf(false) }
     val key = entry.path.key
     // ドラッグ可否は場所（ゴミ箱・ネットワーク・アーカイブ等）で決まり、一覧内では安定
     val canDrag = !renaming && hooks.dragKeysFor(entry) != null
@@ -458,33 +580,50 @@ private fun ListRow(
     val dropBounce = remember { Animatable(1f) }
     LaunchedEffect(dropHover) {
         if (dropHover) {
-            dropBounce.animateTo(1.03f, tween(90))
-            dropBounce.animateTo(1f, tween(140))
+            dropBounce.animateTo(1.03f, DangoMotion.bounceUp())
         }
+        dropBounce.animateTo(1f, DangoMotion.bounceDown())
     }
+    val dragAlpha by animateFloatAsState(
+        targetValue = when {
+            key in hooks.draggingKeys -> 0.5f // ドラッグ元は半透明（SPEC §5）
+            entry.isRestricted -> 0.45f
+            else -> 1f
+        },
+        animationSpec = DangoMotion.fade(),
+        label = "dragAlpha",
+    )
+    val dragIcon = rememberVectorPainter(entryIcon(entry.kind))
+    val bounds = LocalItemBounds.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(32.dp)
-            .background(background)
-            .graphicsLayer {
-                scaleX = pulseScale.value * dropBounce.value
-                scaleY = pulseScale.value * dropBounce.value
+            .height(ROW_HEIGHT)
+            .drawBehind {
+                // 選択・ドロップ先の背景は左右をインセットした角丸（内容の位置は動かさない）
+                val inset = ROW_INSET.toPx()
+                val bodySize = Size(size.width - inset * 2, size.height)
+                val outline = shape.createOutline(bodySize, layoutDirection, this)
+                translate(left = inset) {
+                    if (background.alpha > 0f) drawOutline(outline, background)
+                    if (dropBorder.alpha > 0f) {
+                        drawOutline(outline, dropBorder, style = Stroke(width = 2.dp.toPx()))
+                    }
+                }
             }
-            .alpha(
-                when {
-                    key in hooks.draggingKeys -> 0.5f // ドラッグ元は半透明（SPEC §5）
-                    entry.isRestricted -> 0.45f
-                    else -> 1f
-                },
-            )
-            .then(
-                if (dropHover) {
-                    Modifier.border(2.dp, colors.selectionFocused, RoundedCornerShape(4.dp))
+            .graphicsLayer {
+                val scale = pulseScale.value * dropBounce.value
+                scaleX = scale
+                scaleY = scale
+                // 行全体を中央基準で拡大すると文字が横に流れるため、左端を基準にする
+                transformOrigin = TransformOrigin(0f, 0.5f)
+                alpha = if (bounds?.hiddenKeys?.contains(key) == true) {
+                    0f // ゴミ箱へ飛んでいる間は元の位置に描かない
                 } else {
-                    Modifier
-                },
-            )
+                    dragAlpha * (0.4f + 0.6f * reveal.value)
+                }
+                translationY = -(1f - reveal.value) * size.height * 0.5f
+            }
             .entryDropTarget(
                 enabled = hooks.dropEnabled(entry),
                 onHover = { dropHover = it },
@@ -498,6 +637,9 @@ private fun ListRow(
             }
             .recordClickModifiers(clickMods)
             .combinedClickable(
+                // Finder の行は押下で暗くならない（選択の変化だけで応答する）
+                interactionSource = null,
+                indication = null,
                 onClick = { onTap(entry, clickMods.ctrl, clickMods.shift) },
                 onDoubleClick = { onDoubleTap(entry) },
                 // ドラッグ可否での使い分けは IconGridView と同じ理由
@@ -520,6 +662,11 @@ private fun ListRow(
                             onLongPress(entry)
                         }
                         .entryDragSource(
+                            dragImage = DragImage(
+                                icon = dragIcon,
+                                name = entry.name,
+                                style = DragImageStyle.ROW,
+                            ),
                             // マウスは長押しを経ないため、ここで選択を整えて
                             // 表示とペイロードを一致させる（Finder 同様の単独選択切替）
                             onMouseDragStart = { hooks.selectForDrag(entry) },
@@ -542,20 +689,30 @@ private fun ListRow(
             hooks.contextMenuContent(this, entry)
         }
         if (showExpander) {
+            val canExpand = entry.isDir && !entry.isRestricted
             Box(
-                modifier = Modifier.size(18.dp),
+                modifier = Modifier
+                    .size(width = 18.dp, height = ROW_HEIGHT)
+                    .then(
+                        if (canExpand) {
+                            Modifier.clickable(
+                                interactionSource = null,
+                                indication = null,
+                            ) { onToggleExpand(entry) }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
-                if (entry.isDir && !entry.isRestricted) {
+                if (canExpand) {
                     Icon(
                         imageVector = Icons.Rounded.ChevronRight,
                         contentDescription = null,
                         tint = secondary,
                         modifier = Modifier
-                            .size(16.dp)
-                            .rotate(chevronAngle)
-                            .clip(RoundedCornerShape(3.dp))
-                            .clickable { onToggleExpand(entry) },
+                            .size(15.dp)
+                            .rotate(chevronAngle),
                     )
                 }
             }
@@ -566,7 +723,8 @@ private fun ListRow(
             entry = entry,
             thumbSize = 18.dp,
             iconSize = 18.dp,
-            shape = RoundedCornerShape(3.dp),
+            shape = RoundedCornerShape(2.dp),
+            fit = true,
         )
         Spacer(Modifier.width(8.dp))
         if (renaming) {
@@ -574,6 +732,7 @@ private fun ListRow(
                 initialName = entry.name,
                 isDir = entry.isDir,
                 textAlign = TextAlign.Start,
+                fontSize = 13.sp,
                 onCommit = { onCommitRename(entry.path.key, it) },
                 onCancel = onCancelRename,
                 modifier = Modifier.weight(1f),
@@ -584,7 +743,8 @@ private fun ListRow(
                 color = primary,
                 fontSize = 13.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                // Finder 同様、長い名前は中央を省略して拡張子を残す
+                overflow = TextOverflow.MiddleEllipsis,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -621,7 +781,7 @@ private fun ListRow(
             modifier = Modifier.columnWidth { widths.value.date },
         )
         Text(
-            text = if (entry.isDir) "–" else formatSize(entry.size),
+            text = if (entry.isDir) "--" else formatSize(entry.size),
             color = secondary,
             fontSize = 12.sp,
             maxLines = 1,

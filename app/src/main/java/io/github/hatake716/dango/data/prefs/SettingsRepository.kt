@@ -39,9 +39,9 @@ data class Settings(
     /** ゴミ箱の自動削除日数（SPEC §6.6） */
     val trashAutoDays: Int = 30,
     /** リスト表示の列幅（SPEC §4.4 列カスタマイズ。名前列は残り幅を使う） */
-    val listDateWidthDp: Int = 128,
-    val listSizeWidthDp: Int = 76,
-    val listKindWidthDp: Int = 112,
+    val listDateWidthDp: Int = 104,
+    val listSizeWidthDp: Int = 64,
+    val listKindWidthDp: Int = 88,
 )
 
 /** テーマ・表示設定の永続化（SPEC §8.1 data/prefs。フォルダごとの記憶は M1 以降で Room へ） */
@@ -67,9 +67,9 @@ class SettingsRepository(private val context: Context) {
                 dynamicColor = p[KEY_DYNAMIC_COLOR] ?: false,
                 biometricLock = p[KEY_BIOMETRIC] ?: false,
                 trashAutoDays = p[KEY_TRASH_DAYS] ?: 30,
-                listDateWidthDp = (p[KEY_LIST_DATE_W] ?: 128).coerceIn(56, 400),
-                listSizeWidthDp = (p[KEY_LIST_SIZE_W] ?: 76).coerceIn(40, 400),
-                listKindWidthDp = (p[KEY_LIST_KIND_W] ?: 112).coerceIn(48, 400),
+                listDateWidthDp = (p[KEY_LIST_DATE_W] ?: 104).coerceIn(56, 400),
+                listSizeWidthDp = (p[KEY_LIST_SIZE_W] ?: 64).coerceIn(40, 400),
+                listKindWidthDp = (p[KEY_LIST_KIND_W] ?: 88).coerceIn(48, 400),
             )
         }
 
