@@ -176,6 +176,48 @@
     <string name="ql_pdf_wrong_password">パスワードが違います。もう一度入力してください。</string>
     <string name="ql_pdf_unsupported">この端末ではパスワード付き PDF を開けません（Android 15 以降で対応）</string>
 
+    <!-- APK（SPEC §6.5, §11） -->
+    <string name="ql_apk_install">インストール</string>
+    <string name="ql_apk_update">アップデート</string>
+    <string name="ql_apk_reinstall">再インストール</string>
+    <string name="ql_apk_open">開く</string>
+    <string name="ql_apk_copying">準備中… %1$d%%</string>
+    <string name="ql_apk_waiting">確認待ち…</string>
+    <string name="ql_apk_installing">インストール中…</string>
+    <string name="ql_apk_busy">別の APK をインストール中です</string>
+    <string name="ql_apk_version_value">バージョン %1$s（%2$d）</string>
+    <string name="ql_apk_package">パッケージ名</string>
+    <string name="ql_apk_min_sdk_label">最小 Android</string>
+    <string name="ql_apk_target_sdk_label">対象 Android</string>
+    <string name="ql_apk_android_version">Android %1$s（API %2$d）</string>
+    <string name="ql_apk_installed_label">インストール済み</string>
+    <string name="ql_apk_installed_value">%1$s（%2$d）</string>
+    <string name="ql_apk_not_installed">未インストール</string>
+    <string name="ql_apk_permissions">権限（%1$d）</string>
+    <string name="ql_apk_no_permissions">要求する権限はありません</string>
+    <string name="ql_apk_dangerous_legend">利用時に許可が必要</string>
+    <string name="ql_apk_parse_error">APK を解析できませんでした（破損しているか、分割 APK の可能性があります）</string>
+    <string name="ql_apk_min_sdk_block">この端末では動作しません（Android %1$s 以降が必要です）</string>
+    <string name="ql_apk_unsigned">署名されていないか署名が壊れているため、インストールできません</string>
+    <string name="ql_apk_test_only">テスト専用の APK のため、インストールできません</string>
+    <string name="ql_apk_downgrade">インストール済みのバージョンより古いため、インストールできません</string>
+    <string name="ql_apk_signature_mismatch">インストール済みのアプリと署名が異なるため、更新できません</string>
+    <string name="ql_apk_old_target">古い Android 向けのアプリのため、インストールが拒否される可能性があります</string>
+    <string name="apk_install_done">インストールしました</string>
+    <string name="apk_install_done_named">「%1$s」をインストールしました</string>
+    <string name="apk_open_app">開く</string>
+    <string name="apk_no_launcher">このアプリには起動できる画面がありません</string>
+    <string name="apk_permission_denied">「不明なアプリのインストール」が許可されなかったため、インストールを中止しました</string>
+    <string name="apk_policy_blocked">管理者のポリシーにより、不明なアプリのインストールは禁止されています</string>
+    <string name="apk_install_aborted">インストールをキャンセルしました</string>
+    <string name="apk_install_blocked">インストールがブロックされました（端末のポリシーまたは Play プロテクトによる制限）</string>
+    <string name="apk_install_invalid">APK が壊れているか、無効なファイルです</string>
+    <string name="apk_install_conflict">インストール済みのアプリと競合するため、インストールできません（署名が異なる可能性があります）</string>
+    <string name="apk_install_storage">空き容量が足りないため、インストールできません</string>
+    <string name="apk_install_incompatible">この端末とは互換性がないため、インストールできません</string>
+    <string name="apk_install_timeout">インストールがタイムアウトしました</string>
+    <string name="apk_install_failed">インストールに失敗しました</string>
+
     <!-- テキストプレビュー / 簡易編集（SPEC §6.5.1） -->
     <string name="txt_wrap">折り返し</string>
     <string name="txt_load_all">すべて読み込む</string>

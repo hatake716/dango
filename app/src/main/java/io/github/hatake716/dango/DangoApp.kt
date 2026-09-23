@@ -12,6 +12,8 @@ import coil3.gif.AnimatedImageDecoder
 import coil3.request.crossfade
 import coil3.svg.SvgDecoder
 import coil3.video.VideoFrameDecoder
+import io.github.hatake716.dango.data.apk.ApkInspector
+import io.github.hatake716.dango.data.apk.ApkInstaller
 import io.github.hatake716.dango.data.archive.ArchiveManager
 import io.github.hatake716.dango.data.db.DangoDatabase
 import io.github.hatake716.dango.data.fs.ProviderRegistry
@@ -54,6 +56,8 @@ class AppContainer(context: Context) {
     val archiveManager = ArchiveManager(context.cacheDir)
     val textFileStore = TextFileStore()
     val infoLoader = InfoLoader()
+    val apkInspector = ApkInspector(context)
+    val apkInstaller = ApkInstaller(context, providerRegistry)
 }
 
 class DangoApp : Application(), SingletonImageLoader.Factory {

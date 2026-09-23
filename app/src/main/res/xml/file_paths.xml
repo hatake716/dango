@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-path name="external" path="." />
+    <!-- ネットワーク・アーカイブのプレビュー用キャッシュも共有 / 別のアプリで開くの対象にする -->
+    <cache-path name="cache" path="." />
 </paths>

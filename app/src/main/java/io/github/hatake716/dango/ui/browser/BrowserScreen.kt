@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -67,6 +68,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import io.github.hatake716.dango.R
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import io.github.hatake716.dango.data.apk.ApkInstaller
 import io.github.hatake716.dango.data.fs.local.ShareHelper
 import io.github.hatake716.dango.data.prefs.Settings
 import io.github.hatake716.dango.domain.model.ThemeMode
@@ -126,6 +129,8 @@ private fun BrowserScreenContent(
     val transfer by viewModel.transferProgress.collectAsState()
     val conflict by viewModel.conflictRequest.collectAsState()
     val connections by viewModel.connections.collectAsState()
+    val apkInstallState by viewModel.apkInstallState.collectAsState()
+    val apkConfirm by viewModel.apkConfirmIntent.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     var sidebarOpen by remember { mutableStateOf(false) }
@@ -181,8 +186,56 @@ private fun BrowserScreenContent(
                     runCatching {
                         context.startActivity(ShareHelper.openWithIntent(context, event.entry))
                     }
+                is BrowserEvent.OpenInstallPermissionSettings -> {
+                    val action = android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(action, android.net.Uri.parse("package:" + context.packageName)),
+                        )
+                    }.recoverCatching {
+                        context.startActivity(android.content.Intent(action))
+                    }.onFailure {
+                        viewModel.onInstallPermissionSettingsUnavailable()
+                    }
+                }
+                is BrowserEvent.ApkInstalled -> {
+                    val launch = event.packageName?.let { ApkInstaller.launchIntent(context, it) }
+                    val result = snackbarHostState.showSnackbar(
+                        message = event.label?.let { context.getString(R.string.apk_install_done_named, it) }
+                            ?: context.getString(R.string.apk_install_done),
+                        actionLabel = launch?.let { context.getString(R.string.apk_open_app) },
+                        // 操作付きの既定は無期限で、閉じるまで後続の通知が止まるため
+                        duration = androidx.compose.material3.SnackbarDuration.Long,
+                    )
+                    if (result == SnackbarResult.ActionPerformed && launch != null) {
+                        runCatching { context.startActivity(launch) }
+                    }
+                }
+                is BrowserEvent.LaunchApp -> {
+                    val launch = ApkInstaller.launchIntent(context, event.packageName)
+                    if (launch == null || runCatching { context.startActivity(launch) }.isFailure) {
+                        snackbarHostState.showSnackbar(context.getString(R.string.apk_no_launcher))
+                    }
+                }
             }
         }
+    }
+
+    // 「不明なアプリのインストール」の設定から戻ったら APK のインストールを続ける（SPEC §11）
+    LifecycleResumeEffect(Unit) {
+        viewModel.onResumeCheckApkPermission()
+        onPauseOrDispose { }
+    }
+    // システムのインストール確認画面は前面にいる間だけ起動する（裏からの起動は OS に捨てられる）
+    LifecycleResumeEffect(apkConfirm) {
+        apkConfirm?.let { confirm ->
+            // PackageInstaller が EXTRA_INTENT に入れて自アプリの非公開レシーバーへ渡した確認画面
+            if (Build.VERSION.SDK_INT >= 36) confirm.removeLaunchSecurityProtection()
+            runCatching { context.startActivity(confirm) }
+                .onFailure { viewModel.onApkConfirmLaunchFailed() }
+            viewModel.consumeApkConfirm()
+        }
+        onPauseOrDispose { }
     }
 
     // 戻る操作の優先順位: Quick Look → リネーム → 検索 → 選択モード → サイドバー → 履歴
@@ -363,8 +416,23 @@ private fun BrowserScreenContent(
                     onOpenWith = viewModel::openWith,
                     onInfo = viewModel::showInfo,
                     onNotify = viewModel::notify,
+                    loadApkInfo = viewModel::apkInfoFor,
+                    apkInstallState = apkInstallState,
+                    onInstallApk = viewModel::installApk,
+                    onCancelApkInstall = viewModel::cancelApkInstall,
+                    onLaunchApp = viewModel::launchApp,
                 )
             }
+        }
+        // Quick Look 表示中の通知（インストール完了の「開く」など）は Quick Look の上に出す
+        if (state.quickLookIndex != null) {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(bottom = 16.dp),
+            )
         }
     }
 
@@ -527,6 +595,7 @@ private fun MainPane(
             },
             onSelectAll = viewModel::selectAll,
             dismiss = { contextMenuKey = null },
+            onInstallApk = viewModel::installApkFromMenu,
         )
     }
 
@@ -745,12 +814,14 @@ private fun MainPane(
                 onCancelTransfer = viewModel::cancelTransfer,
             )
         }
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 64.dp),
-        )
+        if (state.quickLookIndex == null) {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 64.dp),
+            )
+        }
     }
 }
 

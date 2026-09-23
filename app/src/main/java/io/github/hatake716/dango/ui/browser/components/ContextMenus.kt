@@ -41,6 +41,7 @@ class EntryMenuActions(
     val onPasteInto: (FsEntry?) -> Unit,
     val onSelectAll: () -> Unit,
     val dismiss: () -> Unit,
+    val onInstallApk: (FsEntry) -> Unit = {},
 )
 
 @Composable
@@ -96,6 +97,10 @@ fun ColumnScope.EntryContextMenuContent(
                 MenuItem(R.string.ctx_browse_archive, d) { actions.onBrowseArchive(entry) }
                 MenuItem(R.string.ctx_extract_here, d) { actions.onExtractHere(entry) }
                 MenuItem(R.string.ctx_extract_options, d) { actions.onExtractOptions(entry) }
+            }
+            if (entry.kind == EntryKind.APK && entry.path.scheme == "file") {
+                FinderMenuDivider()
+                MenuItem(R.string.ql_apk_install, d) { actions.onInstallApk(entry) }
             }
             FinderMenuDivider()
             if (!entry.isDir) {
