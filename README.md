@@ -75,7 +75,7 @@
 
 [**Releases**](https://github.com/hatake716/dango/releases) から最新の APK をダウンロードしてインストールしてください。
 
-- 対応: Android 11（API 30）以上。主要検証端末は Pixel（Android 16）
+- 対応: Android 11（API 30）以上。主要検証端末は Pixel（Android 17）。16KB ページサイズ互換
 - 初回起動時に「すべてのファイルへのアクセス」を推奨として求めます（拒否しても制限付きの通常モードで動作）
 
 ## ビルド

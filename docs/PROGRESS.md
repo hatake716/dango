@@ -4,6 +4,16 @@
 
 ## 記録
 
+### 2026-09-23 — v1.2.0 リリース
+
+- GitHub Release v1.2.0 を作成し、署名済み APK（dango-v1.2.0.apk）を添付
+- versionCode 4 / versionName 1.2.0（compileSdk 37 / targetSdk 36）
+- v1.1.0 からの主な変更: APK インストール機能、Finder 風 UI・アニメーションの刷新（書類アイコン・
+  NSMenu 風メニュー・NSAlert 風ダイアログ・Quick Look の起点ズームと下スワイプ・削除の吸い込み ほか）、
+  Android 17 の 16KB ページ互換警告の解消（zstd-jni 1.5.7-19）
+- リリース APK: 署名（dango リリース証明書）・全 .so の 16KB 互換（LOAD / RELRO / zipalign -P 16）を検査。
+  エミュレータに新規インストールして起動・Quick Look・.tar.zst 展開を確認
+
 ### 2026-09-23 — 起動時の「Android アプリの互換性」警告（16KB ページ）を解消
 
 - 症状: 実機（Pixel / Android 17, CP3A.260905.009）で起動のたびに互換性ダイアログ。
