@@ -14,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import io.github.hatake716.dango.R
 import io.github.hatake716.dango.data.db.ConnectionEntity
@@ -132,6 +134,8 @@ fun ConnectionDialog(
             onValueChange = { password = it },
             label = stringResource(R.string.conn_password),
             visualTransformation = PasswordVisualTransformation(),
+            // パスワード用キーボード（IME に学習させない・予測変換を出さない）
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(2.dp))
@@ -170,6 +174,8 @@ fun NetPasswordDialog(
             onValueChange = { value = it },
             placeholder = stringResource(R.string.conn_password),
             visualTransformation = PasswordVisualTransformation(),
+            // パスワード用キーボード（IME に学習させない・予測変換を出さない）
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
     }

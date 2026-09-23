@@ -117,7 +117,7 @@ fun FinderMenu(
                 .padding(4.dp)
                 .shadow(12.dp, MenuShape, clip = false)
                 .clip(MenuShape)
-                .background(colors.toolbar.copy(alpha = 0.985f))
+                .background(colors.toolbar)
                 .border(0.5.dp, border, MenuShape)
                 .width(IntrinsicSize.Max)
                 .widthIn(min = MENU_MIN_WIDTH)

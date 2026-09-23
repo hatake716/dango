@@ -381,6 +381,8 @@ fun EntryThumbnailOrIcon(
     if (entry.previewUri != null && !failed) {
         if (fit) {
             var aspect by remember(entry.previewUri) { mutableStateOf<Float?>(null) }
+            // アプリのアイコンは写真ではないので縁と影を付けない（Finder も同じ）
+            val framed = entry.kind != EntryKind.APK
             Box(modifier = modifier.size(thumbSize), contentAlignment = Alignment.Center) {
                 val a = aspect
                 val frame = when {
@@ -399,7 +401,7 @@ fun EntryThumbnailOrIcon(
                     onError = { failed = true },
                     modifier = frame
                         .then(
-                            if (a != null && thumbSize >= 32.dp) {
+                            if (framed && a != null && thumbSize >= 32.dp) {
                                 Modifier.shadow(1.dp, shape, clip = false)
                             } else {
                                 Modifier
@@ -407,7 +409,7 @@ fun EntryThumbnailOrIcon(
                         )
                         .clip(shape)
                         .then(
-                            if (a != null) Modifier.border(0.5.dp, ThumbBorder, shape) else Modifier,
+                            if (framed && a != null) Modifier.border(0.5.dp, ThumbBorder, shape) else Modifier,
                         ),
                 )
             }

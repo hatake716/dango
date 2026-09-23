@@ -27,11 +27,9 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.UnfoldMore
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -57,6 +55,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.R
+import androidx.compose.foundation.layout.Arrangement
+import io.github.hatake716.dango.ui.browser.components.EntryKindIcon
+import io.github.hatake716.dango.ui.browser.components.FinderTextField
+import io.github.hatake716.dango.ui.browser.components.FinderPushButton
+import io.github.hatake716.dango.ui.browser.components.FinderButtonStyle
+import io.github.hatake716.dango.ui.browser.components.FinderAlertButton
+import io.github.hatake716.dango.ui.browser.components.FinderAlertDialog
 import io.github.hatake716.dango.data.text.LineEnding
 import io.github.hatake716.dango.data.text.TextDocument
 import io.github.hatake716.dango.data.text.TextFileStore
@@ -397,33 +402,27 @@ private fun TextEditor(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                OutlinedTextField(
+                FinderTextField(
                     value = findQuery,
                     onValueChange = { findQuery = it },
-                    label = { Text(stringResource(R.string.txt_find), fontSize = 11.sp) },
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 12.sp, color = Color.White),
+                    placeholder = stringResource(R.string.txt_find),
                     modifier = Modifier.weight(1f),
                 )
-                OutlinedTextField(
+                Spacer(Modifier.width(6.dp))
+                FinderTextField(
                     value = replaceWith,
                     onValueChange = { replaceWith = it },
-                    label = { Text(stringResource(R.string.txt_replace), fontSize = 11.sp) },
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 12.sp, color = Color.White),
+                    placeholder = stringResource(R.string.txt_replace),
                     modifier = Modifier.weight(1f),
                 )
             }
-            Row(modifier = Modifier.padding(horizontal = 8.dp)) {
-                TextButton(onClick = { findNext() }) {
-                    Text(stringResource(R.string.txt_next), fontSize = 11.sp)
-                }
-                TextButton(onClick = { replaceCurrent() }) {
-                    Text(stringResource(R.string.txt_replace), fontSize = 11.sp)
-                }
-                TextButton(onClick = { replaceAll() }) {
-                    Text(stringResource(R.string.txt_replace_all), fontSize = 11.sp)
-                }
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                FinderPushButton(stringResource(R.string.txt_next), onClick = { findNext() }, compact = true)
+                FinderPushButton(stringResource(R.string.txt_replace), onClick = { replaceCurrent() }, compact = true)
+                FinderPushButton(stringResource(R.string.txt_replace_all), onClick = { replaceAll() }, compact = true)
             }
         }
         TextField(
@@ -448,50 +447,40 @@ private fun TextEditor(
     }
 
     if (showSaveConfirm) {
-        AlertDialog(
+        FinderAlertDialog(
             onDismissRequest = { showSaveConfirm = false },
-            title = { Text(stringResource(R.string.txt_save_confirm_title)) },
-            text = { Text(stringResource(R.string.txt_save_confirm_body, entry.name)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showSaveConfirm = false
-                        saving = true
-                    },
-                ) { Text(stringResource(R.string.txt_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveConfirm = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
+            title = stringResource(R.string.txt_save_confirm_title),
+            message = stringResource(R.string.txt_save_confirm_body, entry.name),
+            icon = { EntryKindIcon(kind = entry.kind, name = entry.name, size = 48.dp) },
+            buttons = listOf(
+                FinderAlertButton(stringResource(R.string.txt_save), FinderButtonStyle.Default) {
+                    showSaveConfirm = false
+                    saving = true
+                },
+                FinderAlertButton(stringResource(R.string.cancel)) { showSaveConfirm = false },
+            ),
         )
     }
     if (showExitConfirm) {
-        AlertDialog(
+        // macOS の「保存しますか？」と同じ並び: 保存（既定）/ 保存しない / キャンセル
+        FinderAlertDialog(
             onDismissRequest = { showExitConfirm = false },
-            title = { Text(stringResource(R.string.txt_unsaved_title)) },
-            text = { Text(stringResource(R.string.txt_unsaved_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showExitConfirm = false
-                        onExit()
-                    },
-                ) { Text(stringResource(R.string.txt_discard)) }
-                TextButton(
-                    onClick = {
-                        showExitConfirm = false
-                        exitAfterSave = true
-                        showSaveConfirm = true
-                    },
-                ) { Text(stringResource(R.string.txt_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExitConfirm = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
+            title = stringResource(R.string.txt_unsaved_title),
+            message = stringResource(R.string.txt_unsaved_body),
+            icon = { EntryKindIcon(kind = entry.kind, name = entry.name, size = 48.dp) },
+            stackButtons = true,
+            buttons = listOf(
+                FinderAlertButton(stringResource(R.string.txt_save), FinderButtonStyle.Default) {
+                    showExitConfirm = false
+                    exitAfterSave = true
+                    showSaveConfirm = true
+                },
+                FinderAlertButton(stringResource(R.string.txt_discard), FinderButtonStyle.Destructive) {
+                    showExitConfirm = false
+                    onExit()
+                },
+                FinderAlertButton(stringResource(R.string.cancel)) { showExitConfirm = false },
+            ),
         )
     }
 }

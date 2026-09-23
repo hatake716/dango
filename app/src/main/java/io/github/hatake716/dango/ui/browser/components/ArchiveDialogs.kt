@@ -12,6 +12,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import io.github.hatake716.dango.R
 import io.github.hatake716.dango.data.archive.CompressFormat
@@ -68,6 +70,8 @@ fun CompressDialog(
                 onValueChange = { password = it },
                 label = stringResource(R.string.compress_password_optional),
                 visualTransformation = PasswordVisualTransformation(),
+                // パスワード用キーボード（IME に学習させない・予測変換を出さない）
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -153,6 +157,8 @@ fun ArchivePasswordDialog(
             onValueChange = { value = it },
             placeholder = stringResource(R.string.ql_pdf_password_hint),
             visualTransformation = PasswordVisualTransformation(),
+            // パスワード用キーボード（IME に学習させない・予測変換を出さない）
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
             modifier = Modifier.fillMaxWidth(),
         )
     }

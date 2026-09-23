@@ -105,6 +105,7 @@ import io.github.hatake716.dango.ui.info.InfoSheet
 import io.github.hatake716.dango.ui.quicklook.QuickLookHost
 import io.github.hatake716.dango.ui.quicklook.QuickLookOverlay
 import io.github.hatake716.dango.ui.theme.DangoTheme
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
@@ -1139,7 +1140,8 @@ private fun NormalModeBanner(onRequestFullAccess: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.sidebar)
-            .padding(horizontal = 12.dp, vertical = 2.dp),
+            .heightIn(min = 32.dp)
+            .padding(horizontal = 12.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -1148,13 +1150,12 @@ private fun NormalModeBanner(onRequestFullAccess: () -> Unit) {
             fontSize = 11.sp,
             modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = onRequestFullAccess) {
-            Text(
-                text = stringResource(R.string.normal_mode_grant),
-                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                fontSize = 11.sp,
-            )
-        }
+        io.github.hatake716.dango.ui.browser.components.FinderPushButton(
+            text = stringResource(R.string.normal_mode_grant),
+            onClick = onRequestFullAccess,
+            style = io.github.hatake716.dango.ui.browser.components.FinderButtonStyle.Default,
+            compact = true,
+        )
     }
     HorizontalDivider(thickness = 0.5.dp, color = colors.divider)
 }

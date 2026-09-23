@@ -18,9 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +42,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.hatake716.dango.R
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import io.github.hatake716.dango.domain.model.EntryKind
+import io.github.hatake716.dango.ui.browser.components.EntryKindIcon
+import io.github.hatake716.dango.ui.browser.components.FinderTextField
+import io.github.hatake716.dango.ui.browser.components.FinderButtonStyle
+import io.github.hatake716.dango.ui.browser.components.FinderAlertButton
+import io.github.hatake716.dango.ui.browser.components.FinderAlertDialog
 import io.github.hatake716.dango.data.preview.PdfDocumentHolder
 import io.github.hatake716.dango.data.preview.PdfOpenResult
 import io.github.hatake716.dango.domain.model.FsEntry
@@ -204,38 +211,30 @@ private fun PasswordDialog(
     onCancel: () -> Unit,
 ) {
     var value by remember { mutableStateOf("") }
-    AlertDialog(
+    FinderAlertDialog(
         onDismissRequest = onCancel,
-        title = { Text(stringResource(R.string.ql_pdf_password_title)) },
-        text = {
-            Column {
-                Text(
-                    if (wrongPassword) {
-                        stringResource(R.string.ql_pdf_wrong_password)
-                    } else {
-                        stringResource(R.string.ql_pdf_password_body)
-                    },
-                )
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it },
-                    label = { Text(stringResource(R.string.ql_pdf_password_hint)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                )
-            }
+        title = stringResource(R.string.ql_pdf_password_title),
+        message = if (wrongPassword) {
+            stringResource(R.string.ql_pdf_wrong_password)
+        } else {
+            stringResource(R.string.ql_pdf_password_body)
         },
-        confirmButton = {
-            TextButton(onClick = { onSubmit(value) }) {
-                Text(stringResource(R.string.ql_pdf_unlock))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) {
-                Text(stringResource(R.string.cancel))
-            }
-        },
-    )
+        icon = { EntryKindIcon(kind = EntryKind.PDF, name = "", size = 48.dp) },
+        buttons = listOf(
+            FinderAlertButton(stringResource(R.string.ql_pdf_unlock), FinderButtonStyle.Default) { onSubmit(value) },
+            FinderAlertButton(stringResource(R.string.cancel), onClick = onCancel),
+        ),
+    ) {
+        FinderTextField(
+            value = value,
+            onValueChange = { value = it },
+            placeholder = stringResource(R.string.ql_pdf_password_hint),
+            visualTransformation = PasswordVisualTransformation(),
+            // パスワード用キーボード（IME に学習させない・予測変換を出さない）
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 @Composable
