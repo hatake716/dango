@@ -17,7 +17,8 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "io.github.hatake716.dango"
-    compileSdk = 36
+    // zstd-jni（16KB ページ互換版）が compileSdk 37 を要求する。targetSdk は 36 のまま
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.github.hatake716.dango"

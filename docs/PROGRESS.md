@@ -4,6 +4,23 @@
 
 ## 記録
 
+### 2026-09-23 — 起動時の「Android アプリの互換性」警告（16KB ページ）を解消
+
+- 症状: 実機（Pixel / Android 17, CP3A.260905.009）で起動のたびに互換性ダイアログ。
+  logcat `AppWarnings: Showing PageSizeMismatchDialog`、`dumpsys package` の `pageSizeCompat=256`
+- 原因: `libzstd-jni-1.5.6-6.so`（arm64）の GNU_RELRO が LOAD セグメントの末尾（suffix）になっておらず、
+  終端 0xa2000 も 16KB 境界でない。Android 17 はこの「RELRO が suffix でなく終端も 16KB 未整列」を
+  4KB ページの端末でも判定して警告する（LOAD の整列 64KB と zip の 16KB 配置は問題なし。
+  AndroidX の .so は RELRO が独立セグメントなので合格）
+- 対処: zstd-jni を 1.5.7-19 に更新（全 ABI で LOAD 16KB 整列・RELRO 独立・終端 16KB 整列）。
+  1.5.7-13 以降は AAR が compileSdk 37 を要求するため compileSdk を 37 に（targetSdk は 36 のまま、
+  AGP 8.13 の未検証警告は gradle.properties で抑制）。compileSdk 36 のまま使える合格版
+  （1.5.7-3〜-11）は arm64 で RELRO 自体が無く保護が弱まるため採らなかった
+- 確認: APK 内の全 .so を検査（LOAD ≥16KB・RELRO 条件・zipalign -P 16 すべて合格）。実機に入れ直すと
+  `pageSizeCompat=0`（端末上の他の全 587 パッケージと同じ値）。エミュレータで .tar.zst / .zst の展開が
+  従来どおり動くこと（新しいネイティブライブラリの読み込み成功）を確認
+- 注意: 公開中の v1.1.0 の APK は旧 zstd-jni のため、Android 17 端末では同じ警告が出る
+
 ### 2026-09-23 — APK インストール機能と Finder 風 UI・アニメーションの刷新（SPEC §15 #12, #13）
 
 **進め方**: 4観点の事前調査（APK 実装計画・SPEC §5 アニメーション監査・見た目監査・macOS Finder の実測情報）→
