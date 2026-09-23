@@ -193,6 +193,10 @@
     <string name="info_compute">Compute</string>
     <string name="info_items">%1$d items</string>
     <string name="info_calculating">Calculating…</string>
+    <string name="info_label_colon">%1$s:</string>
+    <string name="info_section_general">General</string>
+    <string name="info_section_more">More Info</string>
+    <string name="info_header_modified">Modified: %1$s</string>
 
     <string name="extract_no_space">Not enough free space to extract</string>
     <string name="archive_unsupported">This archive format cannot be opened</string>
@@ -289,6 +293,7 @@
     <string name="settings_trash_days_value">%1$d days</string>
     <string name="settings_clear_cache">Clear cache</string>
     <string name="settings_clear_cache_desc">Delete thumbnail and preview temp files</string>
+    <string name="settings_clear_cache_action">Clear</string>
     <string name="settings_biometric">Lock with biometrics at launch</string>
     <string name="settings_biometric_desc">Protects your network connection credentials</string>
     <string name="settings_version">Version</string>

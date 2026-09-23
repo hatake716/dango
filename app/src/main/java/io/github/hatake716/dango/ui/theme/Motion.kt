@@ -83,6 +83,15 @@ object DangoMotion {
     fun <T> fade(): FiniteAnimationSpec<T> = tween(150, easing = MacEase)
     fun <T> bar(): FiniteAnimationSpec<T> = tween(200, easing = MacEase)
 
+    /** アラート（NSAlert）: 1.04→1.0 に縮みながらフェードインし、閉じるときはフェードのみ */
+    const val ALERT_SCALE = 1.04f
+    const val ALERT_OUT_MS = 120
+    fun <T> alertIn(): FiniteAnimationSpec<T> = tween(150, easing = MacEase)
+    fun <T> alertOut(): FiniteAnimationSpec<T> = tween(ALERT_OUT_MS, easing = LinearEasing)
+
+    /** 進捗バー: 飛び飛びに届く進捗値をなめらかにつなぐ */
+    fun <T> progress(): FiniteAnimationSpec<T> = tween(250, easing = LinearEasing)
+
     /** 読み込み中スピナーは遅れて出す（ローカルの速いフォルダでちらつかせない） */
     const val SPINNER_DELAY_MS = 300
 

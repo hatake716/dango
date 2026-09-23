@@ -212,6 +212,10 @@
     <string name="info_compute">計算</string>
     <string name="info_items">%1$d 項目</string>
     <string name="info_calculating">計算中…</string>
+    <string name="info_label_colon">%1$s：</string>
+    <string name="info_section_general">一般情報</string>
+    <string name="info_section_more">詳細情報</string>
+    <string name="info_header_modified">変更日：%1$s</string>
 
     <!-- 圧縮・解凍（M3。SPEC §6.4） -->
     <string name="extract_no_space">空き容量が足りないため展開できません</string>
@@ -317,6 +321,7 @@
     <string name="settings_trash_days_value">%1$d 日</string>
     <string name="settings_clear_cache">キャッシュを消去</string>
     <string name="settings_clear_cache_desc">サムネイル・プレビューの一時ファイルを削除する</string>
+    <string name="settings_clear_cache_action">消去</string>
     <string name="settings_biometric">起動時に生体認証でロック</string>
     <string name="settings_biometric_desc">ネットワーク接続情報の保護のため</string>
     <string name="settings_version">バージョン</string>
