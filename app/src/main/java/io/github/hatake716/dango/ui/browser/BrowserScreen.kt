@@ -100,6 +100,10 @@ import io.github.hatake716.dango.ui.browser.components.rememberItemBoundsRegistr
 import io.github.hatake716.dango.ui.info.InfoSheet
 import io.github.hatake716.dango.ui.quicklook.QuickLookHost
 import io.github.hatake716.dango.ui.theme.DangoTheme
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import io.github.hatake716.dango.ui.browser.components.LocalSuppressPlacement
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.expandVertically
@@ -287,7 +291,19 @@ private fun BrowserScreenContent(
                     enter = expandHorizontally(DangoMotion.sidebar()) + fadeIn(DangoMotion.sidebar()),
                     exit = shrinkHorizontally(DangoMotion.sidebar()) + fadeOut(DangoMotion.sidebar()),
                 ) {
-                    Row {
+                    // 横向きのカメラ切り欠き等で左に取った余白も、サイドバーの色で塗り延ばす
+                    val startInset = WindowInsets.safeDrawing.getLeft(LocalDensity.current, LayoutDirection.Ltr)
+                    Row(
+                        modifier = Modifier.drawBehind {
+                            if (startInset > 0) {
+                                drawRect(
+                                    color = colors.sidebar,
+                                    topLeft = Offset(-startInset.toFloat(), 0f),
+                                    size = Size(startInset.toFloat(), size.height),
+                                )
+                            }
+                        },
+                    ) {
                         SidebarContent(
                             favorites = viewModel.sidebarFavorites,
                             locations = viewModel.sidebarLocations,

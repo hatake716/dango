@@ -447,14 +447,14 @@ private val SEGMENT_HEIGHT = 28.dp
 
 /**
  * 表示切替のセグメンテッドコントロール（Finder のツールバー「表示」）。
- * 薄いグレーのトラック上を、選択中の白いつまみが横にスライドする
+ * Sequoia のツールバーと同じく枠は描かず、選択中の項目だけにグレーの角丸が付き、
+ * それが横にスライドする
  */
 @Composable
 private fun ViewModeSegmented(current: ViewMode, onSetViewMode: (ViewMode) -> Unit) {
     val colors = DangoTheme.colors
-    val dark = colors.windowBackground.luminance() < 0.5f
-    val track = colors.divider
-    val thumb = if (dark) colors.selectionUnfocused else colors.windowBackground
+    val track = Color.Transparent
+    val thumb = colors.selectionUnfocused
     val index = VIEW_MODES.indexOfFirst { it.mode == current }.coerceAtLeast(0)
     val thumbX by animateDpAsState(
         targetValue = SEGMENT_WIDTH * index,
@@ -472,7 +472,6 @@ private fun ViewModeSegmented(current: ViewMode, onSetViewMode: (ViewMode) -> Un
             modifier = Modifier
                 .offset(x = thumbX)
                 .size(SEGMENT_WIDTH, SEGMENT_HEIGHT)
-                .shadow(if (dark) 0.dp else 1.dp, RoundedCornerShape(6.dp))
                 .clip(RoundedCornerShape(6.dp))
                 .background(thumb),
         )
