@@ -29,6 +29,14 @@ object DangoMotion {
     fun <T> quickLook(): FiniteAnimationSpec<T> =
         spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)
     const val QUICK_LOOK_FADE_MS = 280
+    /** 閉じるときの暗幕は中身の縮小と同時に消える長さにする */
+    const val QUICK_LOOK_FADE_OUT_MS = 200
+    /** 上部バーは拡大が始まってから少し遅れて出す */
+    const val QUICK_LOOK_CHROME_DELAY_MS = 90
+    /** 起点アイテムが画面に無いときは、この倍率とのあいだでフェードする */
+    const val QUICK_LOOK_FALLBACK_SCALE = 0.9f
+    /** 画像の読み込みを待ってから拡大を始める上限（空のパネルを拡大させない） */
+    const val QUICK_LOOK_HOLD_MAX_MS = 200L
 
     /** 選択ハイライト: 付くときは 80ms、外れるときは Finder 同様に素早く */
     fun <T> selectionIn(): FiniteAnimationSpec<T> = tween(80, easing = LinearEasing)

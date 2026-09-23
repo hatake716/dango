@@ -1,43 +1,27 @@
 package io.github.hatake716.dango.ui.quicklook
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import io.github.hatake716.dango.R
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import io.github.hatake716.dango.data.text.TextFileStore
 import io.github.hatake716.dango.domain.model.EntryKind
 import io.github.hatake716.dango.domain.model.FsEntry
@@ -45,7 +29,7 @@ import io.github.hatake716.dango.ui.theme.DangoTheme
 
 /**
  * Quick Look（SPEC §6.5）。フォルダ内のファイルを HorizontalPager で前後移動できる。
- * 共有要素トランジションは近似（スケール＋フェード）。真の SharedTransition は M6 で。
+ * 出入りの拡大縮小と下スワイプは [QuickLookOverlay] / [LocalQuickLookMotion] が担う
  */
 @Composable
 fun QuickLookHost(
@@ -78,15 +62,30 @@ fun QuickLookHost(
     }
 
     val current = files.getOrNull(pagerState.currentPage)
+    val motion = LocalQuickLookMotion.current
+    val density = LocalDensity.current
+    val pageTop = WindowInsets.statusBars.getTop(density) + with(density) { QL_BAR_HEIGHT.roundToPx() }
+    SideEffect { motion?.contentTop = pageTop.toFloat() }
+    val dismiss = rememberQuickLookDismiss(
+        motion = motion,
+        enabled = !pagerLocked && !textEditing,
+        onDismiss = { requestClose() },
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.94f)),
+            // 暗幕は拡大に含めず、単独でフェードする（下スワイプの量でも薄くなる）
+            .drawBehind {
+                drawRect(Color.Black, alpha = QL_BACKDROP_ALPHA * (motion?.backdropAlpha() ?: 1f))
+            },
     ) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .quickLookDismiss(dismiss)
+                .quickLookContent(motion),
             userScrollEnabled = !pagerLocked && files.size > 1,
             key = { files[it].path.key },
         ) { page ->
@@ -96,12 +95,11 @@ fun QuickLookHost(
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = 44.dp),
+                    .padding(top = QL_BAR_HEIGHT),
             ) {
                 when (entry.kind) {
                     EntryKind.IMAGE -> ImagePage(
                         entry = entry,
-                        onDismiss = onClose,
                         onZoomChanged = { zoomed -> if (isActive) pagerLocked = zoomed },
                     )
                     EntryKind.VIDEO, EntryKind.AUDIO -> MediaPage(
@@ -134,73 +132,18 @@ fun QuickLookHost(
             }
         }
 
-        // 上部バー
-        Column(modifier = Modifier.align(Alignment.TopCenter)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .height(44.dp)
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { requestClose() }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Close,
-                        contentDescription = stringResource(R.string.ql_close),
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-                Text(
-                    text = current?.name ?: "",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp),
-                )
-                if (files.size > 1) {
-                    Text(
-                        text = stringResource(
-                            R.string.ql_page_of,
-                            pagerState.currentPage + 1,
-                            files.size,
-                        ),
-                        color = Color.White.copy(alpha = 0.7f),
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(end = 4.dp),
-                    )
-                }
-                IconButton(onClick = { current?.let(onShare) }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Share,
-                        contentDescription = stringResource(R.string.ql_share),
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(onClick = { current?.let(onOpenWith) }) {
-                    Icon(
-                        imageVector = Icons.Outlined.OpenInNew,
-                        contentDescription = stringResource(R.string.ql_open_with),
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(onClick = { current?.let(onInfo) }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Info,
-                        contentDescription = stringResource(R.string.ql_info),
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-            }
-        }
+        // 上部バー（拡大には含めず、少し遅れてフェードインする）
+        QuickLookTopBar(
+            current = current,
+            pageIndex = pagerState.currentPage,
+            pageCount = files.size,
+            onClose = { requestClose() },
+            onOpenWith = { current?.let(onOpenWith) },
+            onShare = { current?.let(onShare) },
+            onInfo = { current?.let(onInfo) },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .graphicsLayer { alpha = motion?.chromeAlpha() ?: 1f },
+        )
     }
 }

@@ -99,6 +99,7 @@ import io.github.hatake716.dango.ui.browser.components.LocalItemBounds
 import io.github.hatake716.dango.ui.browser.components.rememberItemBoundsRegistry
 import io.github.hatake716.dango.ui.info.InfoSheet
 import io.github.hatake716.dango.ui.quicklook.QuickLookHost
+import io.github.hatake716.dango.ui.quicklook.QuickLookOverlay
 import io.github.hatake716.dango.ui.theme.DangoTheme
 
 @Composable
@@ -334,7 +335,7 @@ private fun BrowserScreenContent(
             }
         }
 
-        // Quick Look（SPEC §5: 280ms spring。共有要素は近似）
+        // Quick Look（SPEC §5: 押したアイテムから拡大し、閉じると表示中のアイテムへ縮小）
         // 閉じるアニメーション中もコンテンツを保持するため、最後の表示内容を覚えておく
         var lastQuickLook by remember {
             mutableStateOf<Pair<List<io.github.hatake716.dango.domain.model.FsEntry>, Int>?>(null)
@@ -343,13 +344,9 @@ private fun BrowserScreenContent(
         if (qlIndex != null && state.quickLookFiles.isNotEmpty()) {
             lastQuickLook = state.quickLookFiles to qlIndex
         }
-        AnimatedVisibility(
+        QuickLookOverlay(
             visible = state.quickLookIndex != null,
-            enter = fadeIn() + scaleIn(
-                initialScale = 0.82f,
-                animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium),
-            ),
-            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.9f, animationSpec = tween(180)),
+            currentKey = lastQuickLook?.let { (files, index) -> files.getOrNull(index)?.path?.key },
         ) {
             lastQuickLook?.let { (files, index) ->
                 QuickLookHost(

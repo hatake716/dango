@@ -2,6 +2,7 @@ package io.github.hatake716.dango.ui.quicklook
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,10 +26,9 @@ import androidx.compose.material.icons.automirrored.outlined.WrapText
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -43,8 +44,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -58,6 +61,9 @@ import io.github.hatake716.dango.data.text.LineEnding
 import io.github.hatake716.dango.data.text.TextDocument
 import io.github.hatake716.dango.data.text.TextFileStore
 import io.github.hatake716.dango.domain.model.FsEntry
+import io.github.hatake716.dango.ui.browser.components.FinderMenu
+import io.github.hatake716.dango.ui.browser.components.FinderMenuHeader
+import io.github.hatake716.dango.ui.browser.components.FinderMenuItem
 import kotlinx.coroutines.delay
 
 /**
@@ -496,18 +502,35 @@ private fun LineEndingSelector(
     onSelect: (LineEnding) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
-    TextButton(onClick = { expanded = true }) {
-        Text(current.label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
-    }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        LineEnding.entries.forEach { ending ->
-            DropdownMenuItem(
-                text = { Text("${ending.label}（${stringResource(R.string.txt_line_ending)}）") },
-                onClick = {
-                    expanded = false
-                    onSelect(ending)
-                },
+    // macOS のポップアップボタン風: 現在値＋上下シェブロン、選ぶとチェック付きのメニュー
+    Box {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(5.dp))
+                .clickable(role = Role.Button) { expanded = true }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(current.label, fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
+            Icon(
+                imageVector = Icons.Outlined.UnfoldMore,
+                contentDescription = stringResource(R.string.txt_line_ending),
+                tint = Color.White.copy(alpha = 0.55f),
+                modifier = Modifier.size(12.dp),
             )
+        }
+        FinderMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            FinderMenuHeader(stringResource(R.string.txt_line_ending))
+            LineEnding.entries.forEach { ending ->
+                FinderMenuItem(
+                    text = ending.label,
+                    checked = ending == current,
+                    onClick = {
+                        expanded = false
+                        if (ending != current) onSelect(ending)
+                    },
+                )
+            }
         }
     }
 }
